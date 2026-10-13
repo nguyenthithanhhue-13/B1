@@ -29,6 +29,7 @@ Cửa sổ đen sẽ lần lượt hiện các dòng sau. Số ở đầu dòng 
 | dòng hiện ra | nghĩa là | em làm gì |
 |---|---|---|
 | `0 soi dữ liệu mới` và các dòng `KHÁC` | bài mới có gì lạ so với vòng trước | không làm gì, chỉ để biết |
+| `0b soi dữ liệu đầu vào`: bảng `DỮ LIỆU CÓ VẤN ĐỀ` và `SO SÁNH ĐẶC TRƯNG` | kiểm tra dữ liệu BTC phát; dòng có chữ `LỆCH` = test khác validation ở điểm đó | đọc mục "Đọc bảng soi dữ liệu" ngay dưới bảng này |
 | `1 đọc ảnh ... đang chạy nền` | máy đang đọc 1.500 ảnh | chờ |
 | `2b học ...`, `2c học ...` | máy học lại trên bài mới | chờ |
 | `chờ đọc ảnh validation xong` | đang chờ đọc ảnh | chờ (bước lâu nhất) |
@@ -37,6 +38,14 @@ Cửa sổ đen sẽ lần lượt hiện các dòng sau. Số ở đầu dòng 
 | `5 nâng cao ...` | máy tự học tiếp cho điểm cao hơn | chờ 25–45 phút |
 | **`>>> FILE NỘP (bản NÂNG CAO): ...`** | có file nộp tốt hơn | **nộp lại** |
 | `XONG TẤT CẢ` | xong bài 1 | chuyển sang bài 2 |
+
+**Đọc bảng soi dữ liệu** (hiện ngay đầu, sau khoảng 10 giây):
+
+- Phần `1. DỮ LIỆU CÓ VẤN ĐỀ`: nếu ghi "Không thấy vấn đề nào" thì yên tâm. Nếu có dòng `!!!` (thiếu ảnh, ảnh hỏng, câu rỗng, nhãn lạ, thiếu `scenes.json`...): dữ liệu tải về có thể bị lỗi → **tải lại / giải nén lại** rồi chạy lại. Vẫn còn thì báo BTC.
+- Phần `2. SO SÁNH ĐẶC TRƯNG`: ba cột là trung bình của train, validation, test. Dòng ghi `LỆCH: test khác validation` nghĩa là bài test khó hơn / khác bài tự chấm ở điểm đó, nên **điểm trên web sẽ thấp hơn điểm tự chấm**. Không phải lỗi, không cần sửa gì; chỉ để không bất ngờ.
+  - Dòng `câu: ...` lệch → phần hiểu câu sẽ sai nhiều hơn trên test.
+  - Dòng `ảnh: ...` lệch → phần đọc bản đồ sẽ sai nhiều hơn trên test.
+- Ví dụ thật: ở vòng private, câu trong test dài hơn validation (265 so với 233 ký tự), nhiều câu không dấu hơn (41% so với 34%); đó là một lý do điểm web (0,83–0,87) thấp hơn điểm tự chấm (0,93).
 
 **Cách nộp:** vào trang nộp bài của BTC → chọn file
 `C:\Users\Thanh Hue\Downloads\Phenikaa_Campus_Courier_2026\KIT_BAI1\runs\chungket\predictions.json`
@@ -232,6 +241,6 @@ Tập xong, xóa thư mục `KIT_BAI1\runs\tap1`.
 - Các file `.bat` gọi Python tại `C:\Users\Thanh Hue\.venv\Scripts\python.exe`. Đây là bản duy nhất trên máy có đủ thư viện; bản Python của miniconda thiếu `onnxruntime`.
 - Nếu muốn gõ lệnh tay trong terminal của VS Code (đã bật sẵn `.venv`):
   `python kiem_tra_de.py "<bài mới>"` rồi `python tu_dong.py "<bài mới>" chungket`.
-- `tu_dong.py` gọi: `src/run_cv.py` (đọc ảnh bằng mô hình có sẵn) → `nen.py fit` (bộ đọc câu + mỗi robot một mô hình HistGradientBoosting) → `nen.py test` → `nang_cao.py` (mỗi robot hai mô hình siêu tuyến tính của gói COURIER2 và trung bình của chúng, luật tham lam cho robot 9; chọn theo validation; chỉ chạy khi có đúng 10 robot 0–9) → `nen.py test`.
+- `tu_dong.py` gọi: `kiem_tra_de.py` (cấu trúc dữ liệu) → `soi_du_lieu.py` (dữ liệu hỏng + so sánh đặc trưng train / validation / test, không huấn luyện gì trên test) → `src/run_cv.py` (đọc ảnh bằng mô hình có sẵn) → `nen.py fit` (bộ đọc câu + mỗi robot một mô hình HistGradientBoosting) → `nen.py test` → `nang_cao.py` (mỗi robot hai mô hình siêu tuyến tính của gói COURIER2 và trung bình của chúng, luật tham lam cho robot 9; chọn theo validation; chỉ chạy khi có đúng 10 robot 0–9) → `nen.py test`.
 - Code gốc vòng private của MinnToet nằm nguyên trong `src/` và `train/`; hướng dẫn ở `README_COURIER2.md`. Phần luật chính xác làm tay (0,93) không tự động hóa được.
 - `mo_hinh_vong_private\` chỉ để tham khảo; luật robot đổi thì chúng sai.

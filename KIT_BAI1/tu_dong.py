@@ -94,6 +94,8 @@ print(f"Dữ liệu: {DATA}\nKết quả: {WORK}\nSố tiến trình đọc ản
 # 0. soi đề
 step("0 soi dữ liệu mới", ["kiem_tra_de.py", str(DATA)], show=40, must=False)
 
+step("0b soi dữ liệu đầu vào (vấn đề + test có khác validation không)", ["soi_du_lieu.py", str(DATA)], show=50, must=False)
+
 # 1. đọc ảnh chạy nền (validation trước, test sau)
 cv_log = open(LOG / "1_doc_anh.log", "w", encoding="utf-8")
 SPLITS = ("validation",) if os.environ.get("CHI_DO") == "1" else ("validation", "test")      # CHI_DO=1: chỉ đo trên validation, không làm file nộp
