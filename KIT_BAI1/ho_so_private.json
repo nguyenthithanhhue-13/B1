@@ -1,0 +1,410 @@
+{
+ "file trong thư mục gốc": [
+  "robots.json",
+  "test",
+  "train",
+  "validation"
+ ],
+ "robots.json: số robot": 10,
+ "robots.json: trường": [
+  "hint",
+  "legged",
+  "name",
+  "robot_id"
+ ],
+ "robots.json: tên + gợi ý": [
+  "0: Tia Chớp | legged=False | Chỉ muốn tới nơi bằng ít đoạn đường nhất.",
+  "1: Yên Tĩnh | legged=False | Rất ngại những đoạn đường đông người.",
+  "2: Mái Hiên | legged=False | Thích đi dưới mái che, dù phải vòng một chút.",
+  "3: Mây Mưa | legged=False | Cách chọn đường phụ thuộc vào thời tiết trên bản đồ.",
+  "4: Sơn Dương | legged=True | Robot có chân, là robot duy nhất đi được bậc thang.",
+  "5: Thẳng Tắp | legged=False | Không thích đổi hướng; hướng mũi robot trên ảnh rất quan trọng.",
+  "6: Hỏa Tốc | legged=False | Đọc kỹ mức độ khẩn cấp trong yêu cầu.",
+  "7: Nâng Niu | legged=False | Cách đi phụ thuộc vào món hàng đang chở.",
+  "8: Lề Phải | legged=False | Có thói quen riêng khi đổi hướng ở giao lộ.",
+  "9: Tham Lam | legged=False | Chỉ nhìn một bước trước mắt."
+ ],
+ "train: file": [
+  "dataset_card.json",
+  "images",
+  "labels.json",
+  "observations.json",
+  "scenes.json"
+ ],
+ "train: trường của một dòng": [
+  "id",
+  "image",
+  "mission",
+  "robot_id"
+ ],
+ "train: các robot_id": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "train: số dòng mỗi ảnh": [
+  10
+ ],
+ "train: đuôi ảnh": [
+  "jpg",
+  "png"
+ ],
+ "train: kiểu của một nhãn": [
+  "int"
+ ],
+ "train: giá trị nhãn": [
+  "0",
+  "1",
+  "2",
+  "3"
+ ],
+ "train: số nhãn / số dòng": "bằng nhau",
+ "scene: trường": [
+  "degradation",
+  "edges",
+  "grid",
+  "height",
+  "image",
+  "landmarks",
+  "legend",
+  "mission",
+  "nodes",
+  "road_look",
+  "robot",
+  "scene_id",
+  "style",
+  "weather",
+  "weather_box",
+  "width"
+ ],
+ "scene: kiểu của grid": "dict rows,cols",
+ "scene: grid nằm trong 5..9": [
+  true,
+  true
+ ],
+ "scene: trường của node": [
+  "rc",
+  "xy"
+ ],
+ "scene: trường của edge": [
+  "a",
+  "b",
+  "oneway_to",
+  "stairs",
+  "status"
+ ],
+ "scene: edge.status": [
+  "closed",
+  "covered",
+  "crowded",
+  "normal"
+ ],
+ "scene: edge.stairs": [
+  "False",
+  "True"
+ ],
+ "scene: trường của landmark": [
+  "rc",
+  "type"
+ ],
+ "scene: loại địa điểm": [
+  "canteen",
+  "clinic",
+  "dorm",
+  "gate",
+  "lab",
+  "lecture",
+  "library",
+  "office",
+  "parking",
+  "sports"
+ ],
+ "scene: số bản tối đa của một loại <= 2": true,
+ "scene: trường của robot": [
+  "heading",
+  "rc"
+ ],
+ "scene: robot.heading": [
+  "DOWN",
+  "LEFT",
+  "RIGHT",
+  "UP"
+ ],
+ "scene: weather": [
+  "dry",
+  "rain"
+ ],
+ "scene: style": [
+  "classic",
+  "night",
+  "print",
+  "sketch"
+ ],
+ "scene: legend.kind": [
+  "closed",
+  "covered",
+  "crowded",
+  "normal",
+  "oneway",
+  "place:canteen",
+  "place:clinic",
+  "place:dorm",
+  "place:gate",
+  "place:lab",
+  "place:lecture",
+  "place:library",
+  "place:office",
+  "place:parking",
+  "place:sports",
+  "robot",
+  "stairs",
+  "weather"
+ ],
+ "scene: road_look": [
+  "covered->covered",
+  "covered->crowded",
+  "covered->normal",
+  "crowded->covered",
+  "crowded->crowded",
+  "crowded->normal",
+  "normal->covered",
+  "normal->crowded",
+  "normal->normal"
+ ],
+ "scene: degradation: trường": [
+  "blur",
+  "jpeg_quality",
+  "rotation_deg"
+ ],
+ "train: mission: trường": [
+  "fragile",
+  "goal",
+  "goal_ref",
+  "text",
+  "urgent",
+  "via",
+  "via_ref"
+ ],
+ "train: mission.fragile": [
+  "False",
+  "True"
+ ],
+ "train: mission.goal": [
+  "canteen",
+  "clinic",
+  "dorm",
+  "gate",
+  "lab",
+  "lecture",
+  "library",
+  "office",
+  "parking",
+  "sports"
+ ],
+ "train: mission.goal_ref.kind": [
+  "None",
+  "anchor_near",
+  "east",
+  "east_most",
+  "far",
+  "near",
+  "north",
+  "north_most",
+  "south",
+  "south_most",
+  "west",
+  "west_most"
+ ],
+ "train: mission.goal_ref: trường": [
+  "anchor",
+  "kind",
+  "rc"
+ ],
+ "train: mission.urgent": [
+  "False",
+  "True"
+ ],
+ "train: mission.via": [
+  "None",
+  "canteen",
+  "clinic",
+  "dorm",
+  "gate",
+  "lab",
+  "lecture",
+  "library",
+  "office",
+  "parking",
+  "sports"
+ ],
+ "train: mission.via_ref.kind": [
+  "None",
+  "east",
+  "far",
+  "near",
+  "north",
+  "south",
+  "west"
+ ],
+ "train: mission.via_ref: trường": [
+  "anchor",
+  "kind",
+  "rc"
+ ],
+ "validation: file": [
+  "dataset_card.json",
+  "images",
+  "labels.json",
+  "observations.json",
+  "scenes.json"
+ ],
+ "validation: trường của một dòng": [
+  "id",
+  "image",
+  "mission",
+  "robot_id"
+ ],
+ "validation: các robot_id": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "validation: số dòng mỗi ảnh": [
+  10
+ ],
+ "validation: đuôi ảnh": [
+  "jpg",
+  "png"
+ ],
+ "validation: kiểu của một nhãn": [
+  "int"
+ ],
+ "validation: giá trị nhãn": [
+  "0",
+  "1",
+  "2",
+  "3"
+ ],
+ "validation: số nhãn / số dòng": "bằng nhau",
+ "validation: mission: trường": [
+  "fragile",
+  "goal",
+  "goal_ref",
+  "text",
+  "urgent",
+  "via",
+  "via_ref"
+ ],
+ "validation: mission.fragile": [
+  "False",
+  "True"
+ ],
+ "validation: mission.goal": [
+  "canteen",
+  "clinic",
+  "dorm",
+  "gate",
+  "lab",
+  "lecture",
+  "library",
+  "office",
+  "parking",
+  "sports"
+ ],
+ "validation: mission.goal_ref.kind": [
+  "None",
+  "anchor_near",
+  "east",
+  "east_most",
+  "far",
+  "near",
+  "north",
+  "north_most",
+  "south",
+  "south_most",
+  "west",
+  "west_most"
+ ],
+ "validation: mission.goal_ref: trường": [
+  "anchor",
+  "kind",
+  "rc"
+ ],
+ "validation: mission.urgent": [
+  "False",
+  "True"
+ ],
+ "validation: mission.via": [
+  "None",
+  "canteen",
+  "clinic",
+  "dorm",
+  "gate",
+  "lab",
+  "lecture",
+  "library",
+  "office",
+  "parking",
+  "sports"
+ ],
+ "validation: mission.via_ref.kind": [
+  "None",
+  "east",
+  "far",
+  "near",
+  "north",
+  "south",
+  "west"
+ ],
+ "validation: mission.via_ref: trường": [
+  "anchor",
+  "kind",
+  "rc"
+ ],
+ "test: file": [
+  "dataset_card.json",
+  "images",
+  "observations.json",
+  "sample_submission.json"
+ ],
+ "test: trường của một dòng": [
+  "id",
+  "image",
+  "mission",
+  "robot_id"
+ ],
+ "test: các robot_id": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9
+ ],
+ "test: số dòng mỗi ảnh": [
+  10
+ ],
+ "test: đuôi ảnh": [
+  "jpg",
+  "png"
+ ],
+ "test: kiểu file nộp mẫu": "list của int"
+}

@@ -1,0 +1,10 @@
+# Chi dua len bo do nghe bai 1; moi thu khac trong thu muc nay (du lieu va code cac vong truoc) khong dua len.
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/KIT_BAI1/
+!/du_lieu_tap_duot/
+KIT_BAI1/runs/*
+__pycache__/
+*.pyc

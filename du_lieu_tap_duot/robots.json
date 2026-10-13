@@ -1,0 +1,62 @@
+[
+  {
+    "robot_id": 0,
+    "name": "Tia Chớp",
+    "legged": false,
+    "hint": "Chỉ muốn tới nơi bằng ít đoạn đường nhất."
+  },
+  {
+    "robot_id": 1,
+    "name": "Yên Tĩnh",
+    "legged": false,
+    "hint": "Rất ngại những đoạn đường đông người."
+  },
+  {
+    "robot_id": 2,
+    "name": "Mái Hiên",
+    "legged": false,
+    "hint": "Thích đi dưới mái che, dù phải vòng một chút."
+  },
+  {
+    "robot_id": 3,
+    "name": "Mây Mưa",
+    "legged": false,
+    "hint": "Cách chọn đường phụ thuộc vào thời tiết trên bản đồ."
+  },
+  {
+    "robot_id": 4,
+    "name": "Sơn Dương",
+    "legged": true,
+    "hint": "Robot có chân, là robot duy nhất đi được bậc thang."
+  },
+  {
+    "robot_id": 5,
+    "name": "Thẳng Tắp",
+    "legged": false,
+    "hint": "Không thích đổi hướng; hướng mũi robot trên ảnh rất quan trọng."
+  },
+  {
+    "robot_id": 6,
+    "name": "Hỏa Tốc",
+    "legged": false,
+    "hint": "Đọc kỹ mức độ khẩn cấp trong yêu cầu."
+  },
+  {
+    "robot_id": 7,
+    "name": "Nâng Niu",
+    "legged": false,
+    "hint": "Cách đi phụ thuộc vào món hàng đang chở."
+  },
+  {
+    "robot_id": 8,
+    "name": "Lề Phải",
+    "legged": false,
+    "hint": "Có thói quen riêng khi đổi hướng ở giao lộ."
+  },
+  {
+    "robot_id": 9,
+    "name": "Tham Lam",
+    "legged": false,
+    "hint": "Chỉ nhìn một bước trước mắt."
+  }
+]

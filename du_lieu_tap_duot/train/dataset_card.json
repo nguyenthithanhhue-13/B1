@@ -1,0 +1,22 @@
+{
+  "task": "Phenikaa Campus Courier v3 (private-test round)",
+  "split": "train",
+  "profile": "standard",
+  "rows": 20000,
+  "scenes": 2000,
+  "robots": 10,
+  "actions": {
+    "0": "UP",
+    "1": "DOWN",
+    "2": "LEFT",
+    "3": "RIGHT"
+  },
+  "styles": {
+    "classic": 477,
+    "night": 520,
+    "print": 493,
+    "sketch": 510
+  },
+  "has_labels": true,
+  "has_scene_annotations": true
+}

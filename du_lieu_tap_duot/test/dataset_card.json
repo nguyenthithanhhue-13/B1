@@ -1,0 +1,16 @@
+{
+  "task": "Phenikaa Campus Courier v3 (private-test round)",
+  "split": "test",
+  "profile": "hard",
+  "rows": 12000,
+  "scenes": 1200,
+  "robots": 10,
+  "actions": {
+    "0": "UP",
+    "1": "DOWN",
+    "2": "LEFT",
+    "3": "RIGHT"
+  },
+  "has_labels": false,
+  "has_scene_annotations": false
+}

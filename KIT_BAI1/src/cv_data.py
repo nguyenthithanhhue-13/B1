@@ -1,0 +1,433 @@
+"""Tạo dữ liệu huấn luyện CV từ ảnh + scenes.json: cắt mảnh quanh giao lộ, đoạn đường, dòng chú giải, biểu tượng thời tiết.
+Cách chạy:  python src/cv_data.py <train|validation> [all|strong|multi]
+  all (mặc định): mảnh sạch (train có thêm tăng cường nhẹ) -> cache/cvdata_<split>.npz, cache/cvdet_<split>.npz, cache/cvcnn_<split>.npz
+  strong: mảnh làm méo mạnh (xoay, mờ, JPEG, nhiễu) -> cache/cvstrong_<split>.npz (cv_cnn.py tự dùng cvstrong_train.npz nếu có)
+  multi: tăng cường nhiều lớp -> cache/cvmulti_<split>.npz, cache/cvmultimlp_<split>.npz (chỉ dùng khi đặt MULTI=1; trọng số nộp không dùng)
+"""
+
+import os
+import sys
+import time
+from multiprocessing import Pool
+
+import numpy as np
+
+from common import *
+from cvfeat import *
+
+
+def degrade_strong(img, rng):
+    out = img
+    if rng.random() < 0.7:
+        out = cv2.GaussianBlur(out, (0, 0), float(rng.uniform(0.6, 1.6)))
+    if rng.random() < 0.85:
+        q = int(rng.integers(25, 66))
+        ok, buf = cv2.imencode(".jpg", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, q])
+        out = cv2.cvtColor(cv2.imdecode(buf, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+    return out
+
+
+def degrade_multi(img, rng):
+    h, w = img.shape[:2]
+    ang = float(rng.uniform(-4.5, 4.5)) if rng.random() < 0.6 else 0.0
+    sc = float(rng.uniform(0.8, 1.0)) if rng.random() < 0.45 else 1.0
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, sc)
+    out = img
+    if ang or sc != 1.0:
+        corners = np.array([[0, 0, 1], [w, 0, 1], [0, h, 1], [w, h, 1]], np.float64) @ M.T
+        nw, nh = int(np.ceil(np.ptp(corners[:, 0]))), int(np.ceil(np.ptp(corners[:, 1])))
+        nw, nh = max(nw, int(w * sc) + 2), max(nh, int(h * sc) + 2)
+        M[0, 2] += nw / 2 - w / 2
+        M[1, 2] += nh / 2 - h / 2
+        border = tuple(int(x) for x in np.median(np.concatenate([img[0], img[-1], img[:, 0], img[:, -1]]), axis=0))
+        out = cv2.warpAffine(
+            img,
+            M,
+            (nw, nh),
+            flags=cv2.INTER_AREA if sc < 0.95 else cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=border,
+        )
+    if rng.random() < 0.3:
+        hh, ww = out.shape[:2]
+        f = float(rng.uniform(0.55, 0.9))
+        small = cv2.resize(out, (max(8, int(ww * f)), max(8, int(hh * f))), interpolation=cv2.INTER_AREA)
+        out = cv2.resize(small, (ww, hh), interpolation=cv2.INTER_LINEAR)
+    r = rng.random()
+    if r < 0.55:
+        out = cv2.GaussianBlur(out, (0, 0), float(rng.uniform(0.4, 1.7)))
+    elif r < 0.65:
+        k = int(rng.integers(3, 6))
+        ker = np.zeros((k, k), np.float32)
+        ker[k // 2, :] = 1.0 / k
+        R = cv2.getRotationMatrix2D(((k - 1) / 2, (k - 1) / 2), float(rng.uniform(0, 180)), 1.0)
+        ker = cv2.warpAffine(ker, R, (k, k))
+        ker /= max(ker.sum(), 1e-6)
+        out = cv2.filter2D(out, -1, ker)
+    if rng.random() < 0.6:
+        f = out.astype(np.float32)
+        f = (f - 128.0) * float(rng.uniform(0.75, 1.15)) + 128.0 + float(rng.uniform(-18, 18))
+        f = 255.0 * (np.clip(f, 0, 255) / 255.0) ** float(rng.uniform(0.8, 1.25))
+        gray = f.mean(2, keepdims=True)
+        f = gray + (f - gray) * float(rng.uniform(0.8, 1.15))
+        f = f * rng.uniform(0.95, 1.05, 3).astype(np.float32)
+        out = np.clip(f, 0, 255).astype(np.uint8)
+    if rng.random() < 0.35:
+        out = np.clip(out.astype(np.float32) + rng.normal(0, float(rng.uniform(2, 9)), out.shape), 0, 255).astype(
+            np.uint8
+        )
+    for _ in range(2 if rng.random() < 0.2 else 1):
+        if rng.random() < 0.85:
+            q = int(rng.integers(20, 71))
+            ok, buf = cv2.imencode(".jpg", cv2.cvtColor(out, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_JPEG_QUALITY, q])
+            out = cv2.cvtColor(cv2.imdecode(buf, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+    return np.ascontiguousarray(out), M
+
+
+def warp_scene(s, M):
+    import copy
+
+    s = copy.deepcopy(s)
+    tp = lambda x, y: (float(M[0, 0] * x + M[0, 1] * y + M[0, 2]), float(M[1, 0] * x + M[1, 1] * y + M[1, 2]))
+
+    def box(b):
+        pts = [tp(b[0], b[1]), tp(b[2], b[1]), tp(b[0], b[3]), tp(b[2], b[3])]
+        return [min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)]
+
+    for n in s["nodes"]:
+        n["xy"] = list(tp(*n["xy"]))
+    for l in s["legend"]:
+        l["swatch"] = box(l["swatch"])
+        l["label"] = box(l["label"])
+    s["weather_box"] = box(s["weather_box"])
+    return s
+
+
+MULTI_KEYS = STRONG_KEYS_ALL = (
+    "edge_x",
+    "edge_y",
+    "cn_x",
+    "cn_y",
+    "sw_x",
+    "sw_y",
+    "we_x",
+    "we_y",
+    "det_x",
+    "det_y",
+    "node_x",
+    "node_y",
+    "al_x",
+    "al_y",
+)
+
+
+def build_multi(split="train", n=None, procs=7, aug=3):
+    scenes = load_split(split)[2]
+    idx = list(range(len(scenes)))[:n] if n else list(range(len(scenes)))
+    acc = {k: [] for k in MULTI_KEYS}
+    t = time.time()
+    with Pool(procs) as p:
+        for k_, d in enumerate(p.imap_unordered(build_scene, [(split, scenes[i], i, aug) for i in idx], chunksize=4)):
+            for k in MULTI_KEYS:
+                if len(d[k]):
+                    acc[k].append(d[k])
+            if k_ % 100 == 0:
+                print(f"   {k_}/{len(idx)} ảnh ({time.time() - t:.0f}s)", flush=True)
+    tag = "" if aug == 3 else str(aug - 2)
+    data = {k: np.concatenate(acc[k]) for k in STRONG_KEYS}
+    np.savez(CACHE / f"cvmulti{tag}_{split}.npz", **data)
+    del data
+    data2 = {k: np.concatenate(acc[k]) for k in MULTI_KEYS if k not in STRONG_KEYS}
+    np.savez(CACHE / f"cvmultimlp{tag}_{split}.npz", **data2)
+    print("đã lưu", CACHE / f"cvmulti{tag}_{split}.npz", f"{time.time() - t:.0f}s", flush=True)
+
+
+STRONG_AUG = os.environ.get("STRONG_AUG", "0") == "1"
+STRONG_KEYS = ("edge_x", "edge_y", "cn_x", "cn_y", "sw_x", "sw_y", "we_x", "we_y")
+
+
+def _strong_job(args):
+    d = build_scene(args)
+    return {k: d[k] for k in STRONG_KEYS}
+
+
+def build_strong(split="train", n=None, procs=8):
+    scenes = load_split(split)[2]
+    idx = list(range(len(scenes)))[:n] if n else list(range(len(scenes)))
+    acc = {k: [] for k in STRONG_KEYS}
+    t = time.time()
+    with Pool(procs) as p:
+        for k_, d in enumerate(p.imap_unordered(_strong_job, [(split, scenes[i], i, 2) for i in idx], chunksize=4)):
+            for k in STRONG_KEYS:
+                if len(d[k]):
+                    acc[k].append(d[k])
+            if k_ % 200 == 0:
+                print(f"   {k_}/{len(idx)} ảnh ({time.time() - t:.0f}s)", flush=True)
+    data = {k: np.concatenate(v) for k, v in acc.items()}
+    np.savez(CACHE / f"cvstrong_{split}.npz", **data)
+    print("đã lưu", CACHE / f"cvstrong_{split}.npz", {k: v.shape for k, v in data.items()}, f"{time.time() - t:.0f}s")
+
+
+def centers_of(s):
+    return [((l["swatch"][0] + l["swatch"][2]) / 2, (l["swatch"][1] + l["swatch"][3]) / 2) for l in s["legend"]]
+
+
+def build_scene(args):
+    split, s, idx, aug = args
+    rng = np.random.default_rng(
+        idx * 7 + (1000003 if aug else 0) + (2000003 if aug == 2 else 0) + (7000001 * aug if aug >= 3 else 0)
+    )
+    rgb = read_rgb(DATA / split / s["image"])
+    if aug >= 3:
+        rgb, M = degrade_multi(rgb, rng)
+        s = warp_scene(s, M)
+    elif aug == 2:
+        rgb = degrade_strong(rgb, rng)
+    elif aug:
+        rgb = degrade(rgb, rng)
+    im = Img(rgb)
+    W, H = im.w, im.h
+    xy = {tuple(n["rc"]): tuple(n["xy"]) for n in s["nodes"]}
+    lm = {tuple(l["rc"]): l["type"] for l in s["landmarks"]}
+    robot = tuple(s["robot"]["rc"])
+    out = {
+        k: []
+        for k in (
+            "det_x",
+            "det_y",
+            "node_x",
+            "node_y",
+            "cn_x",
+            "cn_y",
+            "al_x",
+            "al_y",
+            "edge_x",
+            "edge_y",
+            "sw_x",
+            "sw_y",
+            "we_x",
+            "we_y",
+        )
+    }
+
+    pos = []
+    for rc, p in xy.items():
+        c = 3 if rc == robot else (2 if rc in lm else 1)
+        pos.append((p[0], p[1], c))
+    for l in s["legend"]:
+        b = l["swatch"]
+        pos.append(((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, 4))
+    wb = s["weather_box"]
+    wc = ((wb[0] + wb[2]) / 2, (wb[1] + wb[3]) / 2)
+    pos.append((wc[0], wc[1], 5))
+    P = np.array([(p[0], p[1]) for p in pos])
+
+    def far_enough(x, y, d=13):
+        return np.min(np.hypot(P[:, 0] - x, P[:, 1] - y)) >= d
+
+    for x, y, c in pos:
+        if c == 1 and rng.random() < 0.3:
+            continue
+        dx, dy = rng.integers(-2, 3, 2)
+        out["det_x"].append(im.det_patch(x + dx, y + dy))
+        out["det_y"].append(c)
+        if rng.random() < 0.6:
+            ang = rng.uniform(0, 2 * np.pi)
+            rad = rng.uniform(13, 24)
+            nx, ny = x + rad * np.cos(ang), y + rad * np.sin(ang)
+            if far_enough(nx, ny):
+                out["det_x"].append(im.det_patch(nx, ny))
+                out["det_y"].append(0)
+    for _ in range(45):
+        x, y = rng.uniform(0, W), rng.uniform(0, H)
+        if far_enough(x, y):
+            out["det_x"].append(im.det_patch(x, y))
+            out["det_y"].append(0)
+    for e in s["edges"]:
+        if rng.random() < 0.25:
+            a, b = xy[tuple(e["a"])], xy[tuple(e["b"])]
+            t = rng.uniform(0.3, 0.7)
+            x, y = a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+            if far_enough(x, y):
+                out["det_x"].append(im.det_patch(x, y))
+                out["det_y"].append(0)
+    for l in s["legend"]:
+        if rng.random() < 0.5:
+            b = l["label"]
+            x, y = rng.uniform(b[0], b[2]), (b[1] + b[3]) / 2
+            if far_enough(x, y):
+                out["det_x"].append(im.det_patch(x, y))
+                out["det_y"].append(0)
+
+    unit = grid_unit(list(xy.keys()), list(xy.values()))
+    for rc, p in xy.items():
+        reps = 2
+        if rc == robot:
+            c = 1 + ACTIONS.index(s["robot"]["heading"])
+        elif rc in lm:
+            c = 5 + PLACES.index(lm[rc])
+        else:
+            c = 0
+            reps = 1 if rng.random() < 0.4 else 0
+        for _ in range(reps):
+            dx, dy = rng.uniform(-0.02, 0.02, 2) * unit
+            u = unit * rng.uniform(0.95, 1.05)
+            out["node_x"].append(im.node_crop(p[0] + dx, p[1] + dy, u))
+            out["node_y"].append(c)
+        for k in range(5 if c else (1 if rng.random() < 0.35 else 0)):
+            lo = 0.07 if k < 3 else 0.20
+            j = rng.uniform(-lo, lo, 2) * unit
+            u = unit * rng.uniform(0.94, 1.06)
+            out["cn_x"].append(im.node_crop(p[0] + j[0], p[1] + j[1], u))
+            out["cn_y"].append(c)
+        for _ in range(4 if c else 0):
+            j = rng.uniform(-ALIGN_MAX, ALIGN_MAX, 2)
+            u = unit * rng.uniform(0.95, 1.05)
+            out["al_x"].append(im.node_crop(p[0] + j[0] * unit, p[1] + j[1] * unit, u)[3024:])
+            out["al_y"].append(
+                tuple(np.clip(np.round(j / ALIGN_STEP), -ALIGN_BINS, ALIGN_BINS).astype(int) + ALIGN_BINS)
+            )
+
+    xyl = np.array(list(xy.values()))
+    others = np.array([c for c in centers_of(s)] + [wc])
+    ink = cv2.blur((im.gray < 110).astype(np.float32), (25, 25))[PAD : PAD + H, PAD : PAD + W]
+
+    def ok_neg(x, y):
+        if not (0 <= x < W and 0 <= y < H):
+            return False
+        return (
+            np.min(np.hypot(xyl[:, 0] - x, xyl[:, 1] - y)) > 0.30 * unit
+            and np.min(np.hypot(others[:, 0] - x, others[:, 1] - y)) > 24
+        )
+
+    cand = rng.uniform([0, 0], [W, H], size=(600, 2))
+    w = np.array([ink[int(y), int(x)] for x, y in cand]) ** 1.5 + 1e-4
+    top = rng.choice(len(cand), size=40, replace=False, p=w / w.sum())
+    nneg = 0
+    for i in top:
+        x, y = cand[i]
+        if ok_neg(x, y) and nneg < 14:
+            out["cn_x"].append(im.node_crop(x, y, unit * rng.uniform(0.9, 1.1)))
+            out["cn_y"].append(15)
+            nneg += 1
+    for _ in range(3):
+        x, y = rng.uniform(0.02 * W, 0.98 * W), rng.uniform(0, max(20.0, xyl[:, 1].min() - 0.5 * unit))
+        if ok_neg(x, y):
+            out["cn_x"].append(im.node_crop(x, y, unit * rng.uniform(0.9, 1.1)))
+            out["cn_y"].append(15)
+    for e in s["edges"]:
+        if rng.random() < 0.18:
+            a, b = np.array(xy[tuple(e["a"])]), np.array(xy[tuple(e["b"])])
+            t = rng.choice([rng.uniform(0.3, 0.7), rng.uniform(0.3, 0.45), rng.uniform(0.55, 0.7)])
+            p = a + t * (b - a)
+            if ok_neg(p[0], p[1]):
+                out["cn_x"].append(im.node_crop(p[0], p[1], unit * rng.uniform(0.9, 1.1)))
+                out["cn_y"].append(15)
+
+    look = s["road_look"]
+    edges = {(tuple(e["a"]), tuple(e["b"])): e for e in s["edges"]}
+    for rc, p in xy.items():
+        for d in (1, 3):
+            rc2 = (rc[0] + DRC[d][0], rc[1] + DRC[d][1])
+            if rc2 not in xy:
+                continue
+            e = edges.get((rc, rc2))
+            if e is None:
+                y = (0, 0, 0)
+            else:
+                lk = 4 if e["status"] == "closed" else LOOKS.index(look[e["status"]])
+                ow = 0 if e["oneway_to"] is None else (1 if tuple(e["oneway_to"]) == rc2 else 2)
+                y = (lk, int(e["stairs"]), ow)
+            ja, jb = rng.uniform(-0.03, 0.03, 2) * unit, rng.uniform(-0.03, 0.03, 2) * unit
+            a = (p[0] + ja[0], p[1] + ja[1])
+            b = (xy[rc2][0] + jb[0], xy[rc2][1] + jb[1])
+            out["edge_x"].append(im.edge_crop(a, b, unit * rng.uniform(0.94, 1.06)))
+            out["edge_y"].append(y)
+
+    centers = [((l["swatch"][0] + l["swatch"][2]) / 2, (l["swatch"][1] + l["swatch"][3]) / 2) for l in s["legend"]]
+    loff = im.label_offset(centers)
+    for l in s["legend"]:
+        b = l["swatch"]
+        k = l["kind"][6:] if l["kind"].startswith("place:") else l["kind"]
+        kind = LEGEND_KINDS.index(k)
+        lk = ROAD_KINDS.index(look[k]) if k in ROAD_KINDS else -1
+        wt = -1
+        if k == "weather":
+            wt = 1 if "mưa" in l["text"] else (2 if ":" in l["text"] else 0)
+        for _ in range(2):
+            dx, dy = rng.integers(-4, 5, 2)
+            out["sw_x"].append(
+                im.swatch_crop((b[0] + b[2]) / 2 + dx, (b[1] + b[3]) / 2 + dy, loff + rng.integers(-2, 3))
+            )
+            out["sw_y"].append((kind, lk, wt))
+        dx, dy = rng.integers(-4, 5, 2)
+        out["sw_x"].append(im.swatch_crop((b[0] + b[2]) / 2 + dx, (b[1] + b[3]) / 2 + dy))
+        out["sw_y"].append((kind, lk, wt))
+    neg = [xy[rc] for rc in lm] + [xy[robot]]
+    plain = [p for rc, p in xy.items() if rc not in lm and rc != robot]
+    neg += [plain[i] for i in rng.choice(len(plain), min(6, len(plain)), replace=False)]
+    for e in [s["edges"][i] for i in rng.choice(len(s["edges"]), min(5, len(s["edges"])), replace=False)]:
+        a, b = xy[tuple(e["a"])], xy[tuple(e["b"])]
+        neg.append(((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))
+    neg.append(wc)
+    neg += [(rng.uniform(30, W - 30), rng.uniform(10, H - 10)) for _ in range(3)]
+    for x, y in neg:
+        if min(np.hypot(x - c[0], y - c[1]) for c in centers) < 16:
+            continue
+        dx, dy = rng.integers(-3, 4, 2)
+        out["sw_x"].append(im.swatch_crop(x + dx, y + dy))
+        out["sw_y"].append((K_NONE, -1, -1))
+
+    for _ in range(6):
+        dx, dy = rng.integers(-7, 8, 2)
+        out["we_x"].append(im.weather_crop(wc[0] + dx, wc[1] + dy))
+        out["we_y"].append(int(s["weather"] == "rain"))
+    return {k: np.array(v) for k, v in out.items()}
+
+
+def build(split, limit=None, aug=True, procs=11):
+    scenes = load_split(split)[2]
+    if limit:
+        scenes = scenes[:limit]
+    jobs = [(split, s, i, False) for i, s in enumerate(scenes)]
+    if aug:
+        jobs += [
+            (split, s, i, True)
+            for i, s in enumerate(scenes)
+            if s["degradation"]["blur"] == 0 and s["degradation"]["jpeg_quality"] is None
+        ]
+        if STRONG_AUG:
+            jobs += [(split, s, i, 2) for i, s in enumerate(scenes)]
+    t = time.time()
+    with Pool(procs) as p:
+        parts = p.map(build_scene, jobs, chunksize=8)
+    data = {}
+    for k in parts[0]:
+        data[k] = np.concatenate([q[k] for q in parts if len(q[k])])
+    print(f"{split}: {len(jobs)} ảnh trong {time.time() - t:.0f}s ->", {k: v.shape for k, v in data.items()})
+    return data
+
+
+if __name__ == "__main__":
+    split = sys.argv[1]
+    what = sys.argv[2] if len(sys.argv) > 2 else "all"
+    if what == "strong":
+        build_strong(split, int(sys.argv[3]) if len(sys.argv) > 3 else None)
+        sys.exit()
+    if what.startswith("multi"):
+        build_multi(
+            split, int(sys.argv[3]) if len(sys.argv) > 3 else None, aug=3 + (int(what[5:]) - 1 if what[5:] else 0)
+        )
+        sys.exit()
+    data = build(split, None, aug=(split == "train"))
+    if what in ("cnn", "all"):
+        np.savez(CACHE / f"cvcnn_{split}.npz", cn_x=data["cn_x"], cn_y=data["cn_y"])
+        print("đã lưu", CACHE / f"cvcnn_{split}.npz", data["cn_x"].shape, "lớp 15:", int((data["cn_y"] == 15).sum()))
+        if what == "cnn":
+            sys.exit()
+    data = {k: v for k, v in data.items() if not k.startswith("cn_")}
+    if what in ("all", "crops"):
+        np.savez(CACHE / f"cvdata_{split}.npz", **{k: v for k, v in data.items() if not k.startswith("det")})
+    if what in ("all", "det"):
+        np.savez(CACHE / f"cvdet_{split}.npz", **{k: v for k, v in data.items() if k.startswith("det")})
+    print("đã lưu cache cho", split, what)
