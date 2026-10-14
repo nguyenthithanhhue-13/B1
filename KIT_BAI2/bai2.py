@@ -6,7 +6,8 @@ Cách chạy:  bấm đúp CHAY_BAI2.bat   (hoặc: python bai2.py)          -> 
 Làm được 5 kiểu bài:
   1. BẢNG số liệu (csv / xlsx): đoán một cột (phân loại hoặc con số)           LightGBM
   2. VĂN BẢN: phân loại / chấm điểm câu, đoạn văn                               TF-IDF + mô hình nhúng câu có sẵn trong máy
-  3. ẢNH: phân loại ảnh                                                          ResNet50 / CLIP có sẵn trong máy + hồi quy logistic
+  3. ẢNH: phân loại ảnh                                                          ResNet50 / CLIP / DINOv2 có sẵn + hồi quy logistic,
+                                                                                 CLIP đoán không cần học, tuỳ chọn tinh chỉnh MobileNetV3
   4. ÂM THANH: phân loại file tiếng (wav / flac / ogg / mp3)                    phổ mel + LightGBM
   5. KHÔNG CÓ NHÃN: chia nhóm (phân cụm) + vẽ hình 2 chiều                      KMeans + PCA
   6. VIDEO: phân loại đoạn phim (vd ngôn ngữ ký hiệu)                            lấy 8 khung hình mỗi video -> ResNet50 / CLIP
@@ -46,6 +47,8 @@ MT_MODELS = {"zh-vi": "Helsinki-NLP/opus-mt-zh-vi", "en-vi": "Helsinki-NLP/opus-
 NLLB = "facebook/nllb-200-distilled-600M"      # mô hình dịch đa ngôn ngữ (615 triệu tham số, chậm hơn nhưng dịch tốt hơn và dịch được mọi cặp)
 NLLB_LANG = {"vi": "vie_Latn", "zh": "zho_Hans", "en": "eng_Latn", "ja": "jpn_Jpan", "ko": "kor_Hang", "fr": "fra_Latn", "de": "deu_Latn",
              "th": "tha_Thai", "lo": "lao_Laoo", "km": "khm_Khmr", "ru": "rus_Cyrl", "es": "spa_Latn", "id": "ind_Latn"}
+CLIP = "openai/clip-vit-base-patch32"
+DINO = "facebook/dinov2-small"      # bộ đọc ảnh tự học (Meta), đặc trưng thường tốt hơn ResNet50 khi chỉ học lớp cuối
 TEXT_MODELS = ["intfloat/multilingual-e5-small", "bkai-foundation-models/vietnamese-bi-encoder"]
 LOG = []
 NL = chr(10)
@@ -178,6 +181,11 @@ def fit_predict(feature_sets, y, task, metric=None):
     splits = cv_splits(y, task)
     oof, test_pred, board = {}, {}, {}
     for fname, (Xtr, Xte, kind) in feature_sets.items():
+        if kind == "san":      # xác suất đã có sẵn (vd CLIP đoán không cần học): chỉ chấm điểm, không học gì
+            if task == "phanloai":
+                oof[fname], test_pred[fname], board[fname] = Xtr, Xte, score(task, y, Xtr)
+                say(f"   {fname:52s} " + "  ".join(f"{k}={v:.4f}" for k, v in board[fname].items()))
+            continue
         for mname, make in make_models(task, kind, n_classes).items():
             name = f"{fname} + {mname}"
             t = time.time()
@@ -215,6 +223,7 @@ def fit_predict(feature_sets, y, task, metric=None):
             best = k
     say(f"=> CHỌN: {best}   (điểm tự chấm {metric} = {board[best][metric]:.4f}, chấm chéo {len(splits)} phần)")
     tp = test_pred[best]
+    fit_predict.last = (best, board[best][metric], metric)      # để phần tinh chỉnh so sánh
     if task == "phanloai":
         return classes[tp.argmax(1)], pd.DataFrame(tp, columns=[str(c) for c in classes]), board, best
     return tp, None, board, best
@@ -349,14 +358,22 @@ def image_embed(paths, which, video=False):
             net.eval().to(dev)
             prep = W.transforms()
             fwd = lambda ims: net(torch.stack([prep(im) for im in ims]).to(dev))
-        else:
+        elif which == "clip":
             from transformers import CLIPModel, CLIPProcessor
-            net = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").eval().to(dev)
-            proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+            net = CLIPModel.from_pretrained(CLIP).eval().to(dev)
+            proc = CLIPProcessor.from_pretrained(CLIP)
 
             def fwd(ims):
                 o = net.get_image_features(**{k: v.to(dev) for k, v in proc(images=ims, return_tensors="pt").items()})
                 return o if isinstance(o, torch.Tensor) else o.pooler_output
+        else:      # dinov2: nối token [CLS] với trung bình các mảnh ảnh
+            from transformers import AutoImageProcessor, AutoModel
+            net = AutoModel.from_pretrained(DINO).eval().to(dev)
+            proc = AutoImageProcessor.from_pretrained(DINO)
+
+            def fwd(ims):
+                h = net(**{k: v.to(dev) for k, v in proc(images=ims, return_tensors="pt").items()}).last_hidden_state
+                return torch.cat([h[:, 0], h[:, 1:].mean(1)], 1)
         with torch.no_grad():
             step = 4 if video else 32
             for i in range(0, len(paths), step):
@@ -380,18 +397,118 @@ def image_embed(paths, which, video=False):
     return np.asarray(cached(key, run), dtype=np.float32)
 
 
-def image_features(tr_paths, te_paths, video=False):
+def clip_zero_shot(img_tr, img_te, classes):
+    """CLIP đoán nhãn chỉ từ TÊN nhãn (không học từ train): so ảnh với câu 'a photo of a <nhãn>'."""
+    import torch
+    from transformers import CLIPModel, CLIPTokenizer
+    net = CLIPModel.from_pretrained(CLIP).eval()
+    tok = CLIPTokenizer.from_pretrained(CLIP)
+    names = [str(c).replace("_", " ").replace("-", " ") for c in classes]
+    with torch.no_grad():
+        t = net.get_text_features(**tok([f"a photo of a {n}" for n in names], padding=True, return_tensors="pt"))
+        t = (t if isinstance(t, torch.Tensor) else t.pooler_output).numpy()
+    t /= np.linalg.norm(t, axis=1, keepdims=True)
+
+    def probs(F):
+        F = F / np.linalg.norm(F, axis=1, keepdims=True)
+        z = 100.0 * F @ t.T
+        z = np.exp(z - z.max(1, keepdims=True))
+        return z / z.sum(1, keepdims=True)
+    return probs(img_tr), probs(img_te)
+
+
+def image_features(tr_paths, te_paths, video=False, y=None):
     F = {}
-    for which in ("resnet50", "clip"):
+    for which in ("resnet50", "clip", "dinov2"):
         try:
             t = time.time()
             F[which] = (image_embed(tr_paths, which, video), image_embed(te_paths, which, video), "day")
             say(f"   đã rút đặc trưng ảnh bằng {which} ({time.time() - t:.0f}s)")
         except Exception as e:
             say(f"   không dùng được {which} ({type(e).__name__}: {str(e)[:100]})")
-    if len(F) == 2:
-        F["resnet50+clip"] = (np.hstack([F["resnet50"][0], F["clip"][0]]), np.hstack([F["resnet50"][1], F["clip"][1]]), "day")
+    if len(F) >= 2:
+        ks = list(F)
+        F["+".join(ks)] = (np.hstack([F[k][0] for k in ks]), np.hstack([F[k][1] for k in ks]), "day")
+    if "clip" in F and y is not None and not video:
+        try:
+            F["CLIP đoán theo tên nhãn (không học)"] = (*clip_zero_shot(F["clip"][0], F["clip"][1], np.unique(y)), "san")
+        except Exception as e:
+            say(f"   bỏ qua CLIP đoán theo tên nhãn ({type(e).__name__}: {str(e)[:100]})")
     return F
+
+
+def finetune_images(trp, y, tep, minutes=20, epochs=8):
+    """Tinh chỉnh cả mạng MobileNetV3 (đã học sẵn trên ImageNet) trên ảnh của đề, trên CPU.
+    Giữ lại 15% ảnh train để tự chấm. Dừng khi hết số vòng hoặc hết 'minutes' phút.
+    Trả về (điểm accuracy trên phần giữ lại, xác suất test [n_test x n_lớp], các lớp)."""
+    import torch
+    import torchvision.models as M
+    import torchvision.transforms as T
+    from PIL import Image
+    from sklearn.model_selection import train_test_split
+    torch.manual_seed(SEED)
+    torch.set_num_threads(max(1, (os.cpu_count() or 4) - 2))
+    classes, yi = np.unique(y, return_inverse=True)
+    idx = np.arange(len(yi))
+    strat = yi if pd.Series(yi).value_counts().min() >= 2 else None
+    tr_i, va_i = train_test_split(idx, test_size=0.15, random_state=SEED, stratify=strat)
+    keep = len(trp) + len(tep) <= 12000      # ít ảnh thì giữ sẵn trong bộ nhớ (đã thu nhỏ) cho nhanh
+
+    def load(p):
+        try:
+            im = Image.open(p).convert("RGB")
+        except Exception:
+            im = Image.new("RGB", (256, 256))
+        im.thumbnail((320, 320))
+        return im
+    mem = {p: load(p) for p in set(trp)} if keep else None
+    get = (lambda p: mem[p]) if keep else load
+    norm = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    aug = T.Compose([T.RandomResizedCrop(224, scale=(0.6, 1.0)), T.RandomHorizontalFlip(), T.ColorJitter(0.2, 0.2, 0.2), T.ToTensor(), norm])
+    plain = T.Compose([T.Resize(256), T.CenterCrop(224), T.ToTensor(), norm])
+    net = M.mobilenet_v3_large(weights=M.MobileNet_V3_Large_Weights.DEFAULT)
+    net.classifier[3] = torch.nn.Linear(net.classifier[3].in_features, len(classes))
+    opt = torch.optim.AdamW(net.parameters(), lr=5e-4, weight_decay=1e-4)
+    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
+    lossf = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+
+    def predict(paths, tta=True):
+        net.eval()
+        out = []
+        with torch.no_grad():
+            for i in range(0, len(paths), 64):
+                x = torch.stack([plain(get(p) if keep and p in mem else load(p)) for p in paths[i:i + 64]])
+                p = net(x).softmax(1)
+                if tta:      # lật ngang rồi lấy trung bình
+                    p = (p + net(torch.flip(x, dims=[3])).softmax(1)) / 2
+                out.append(p.numpy())
+        return np.concatenate(out)
+
+    t0, best, best_state = time.time(), -1.0, None
+    rng = np.random.default_rng(SEED)
+    for ep in range(epochs):
+        net.train()
+        order = rng.permutation(tr_i)
+        for i in range(0, len(order), 32):
+            b = order[i:i + 32]
+            if len(b) < 2:
+                continue
+            x = torch.stack([aug(get(trp[j])) for j in b])
+            loss = lossf(net(x), torch.as_tensor(yi[b]))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+        sched.step()
+        acc = float((predict([trp[j] for j in va_i], tta=False).argmax(1) == yi[va_i]).mean())
+        el = (time.time() - t0) / 60
+        say(f"   tinh chỉnh vòng {ep + 1}/{epochs}: accuracy phần giữ lại = {acc:.4f}   ({el:.1f} phút)")
+        if acc > best:
+            best, best_state = acc, {k: v.clone() for k, v in net.state_dict().items()}
+        if el / (ep + 1) * (ep + 2) > minutes:
+            say(f"   dừng sớm cho kịp giờ (giới hạn {minutes} phút)")
+            break
+    net.load_state_dict(best_state)
+    return best, predict(tep), classes
 
 
 # ======================= đặc trưng: ÂM THANH =======================
@@ -456,6 +573,12 @@ def write_submission(folder, ids, pred, proba, id_col, target_col, sample_path):
         key, rest = common[0], [c for c in s.columns if c != common[0]]
         mp = dict(zip([str(i) for i in ids], range(len(ids))))
         order = [mp.get(str(v)) for v in s[key]]
+        if any(o is None for o in order):      # thử khớp theo tên file bỏ đuôi (vd 't0.png' với 't0')
+            stem = lambda v: Path(str(v)).stem if Path(str(v)).suffix.lower() in IMG_EXT | AUD_EXT | VID_EXT else str(v)
+            mp2 = {stem(i): k for k, i in enumerate(ids)}
+            o2 = [mp2.get(stem(v)) for v in s[key]]
+            if sum(o is not None for o in o2) > sum(o is not None for o in order):
+                order = o2
         if any(o is None for o in order):
             if len(s) == len(ids):
                 order = list(range(len(ids)))
@@ -556,9 +679,28 @@ def run(cfg):
         miss = [p for p in trp + tep if not Path(p).exists()]
         if miss:
             raise RuntimeError(f"Không thấy {len(miss)} file (vd {miss[0]}). Kiểm tra lại 'thư mục gốc' của đường dẫn.")
-        F = image_features(trp, tep, video=(kind == "video")) if kind in ("anh", "video") else audio_features(trp, tep)
+        F = image_features(trp, tep, video=(kind == "video"), y=y if task == "phanloai" else None) if kind in ("anh", "video") else audio_features(trp, tep)
     pred, proba, board, best = fit_predict(F, y, task, cfg.get("chi_so"))
     write_submission(folder, ids, pred, proba, idc, target, cfg.get("mau_nop"))
+    if kind == "anh" and task == "phanloai" and cfg.get("tinh_chinh"):
+        b_name, b_score, b_metric = fit_predict.last
+        say(f"\nTINH CHỈNH MobileNetV3 (tối đa {cfg.get('phut_tinh_chinh', 20)} phút). Bản đang có: {b_name}, {b_metric} = {b_score:.4f}")
+        try:
+            acc, tp, cl = finetune_images(trp, y, tep, minutes=float(cfg.get("phut_tinh_chinh", 20)))
+            pr = pd.DataFrame(tp, columns=[str(c) for c in cl])
+            say(f"   tinh chỉnh: accuracy phần giữ lại = {acc:.4f}")
+            write_submission(folder / "tinh_chinh", ids, cl[tp.argmax(1)], pr, idc, target, cfg.get("mau_nop"))
+            if proba is not None and list(proba.columns) == list(pr.columns):
+                mix = (proba + pr) / 2
+                write_submission(folder / "tron_ca_hai", ids, cl[mix.to_numpy().argmax(1)], mix, idc, target, cfg.get("mau_nop"))
+            if acc > b_score + 0.01:
+                say(f">>> Tinh chỉnh TỐT HƠN ({b_score:.4f} -> {acc:.4f}). Nên nộp: {folder / 'tinh_chinh' / 'submission.csv'}")
+                say(f"    Còn lượt nộp thì thử thêm bản trộn hai cách: {folder / 'tron_ca_hai' / 'submission.csv'}")
+            else:
+                say(f">>> Tinh chỉnh KHÔNG hơn rõ ({b_score:.4f} -> {acc:.4f}). Giữ file nộp chính: {folder / 'submission.csv'}")
+                say(f"    Còn lượt nộp thì có thể thử bản trộn hai cách: {folder / 'tron_ca_hai' / 'submission.csv'}")
+        except Exception as e:
+            say(f"   tinh chỉnh lỗi, bỏ qua ({type(e).__name__}: {str(e)[:150]}). File nộp chính vẫn dùng được.")
     say(f"Xong sau {(time.time() - t0) / 60:.1f} phút. Cấu hình đã lưu: {folder / 'cau_hinh.json'}")
     (folder / "bao_cao.txt").write_text("\n".join(LOG), encoding="utf-8")
 
@@ -790,6 +932,12 @@ def wizard():
         g = guess_task(y)
         a = ask(f"Bài toán: 1=PHÂN LOẠI (đoán nhãn)  2=ĐOÁN CON SỐ. Máy đoán là {'1' if g == 'phanloai' else '2'}", "1" if g == "phanloai" else "2")
         cfg["bai_toan"] = "phanloai" if a == "1" else "hoiquy"
+    if cfg["kieu"] == "anh" and cfg.get("bai_toan", "phanloai") == "phanloai":
+        a = ask("Sau khi có file nộp, TINH CHỈNH thêm mạng nơ-ron (thường tăng điểm, mất thêm 10-30 phút)? 1=CÓ  2=KHÔNG", "1")
+        cfg["tinh_chinh"] = a == "1"
+        if cfg["tinh_chinh"]:
+            m = ask("Tinh chỉnh tối đa bao nhiêu phút?", "20")
+            cfg["phut_tinh_chinh"] = float(m) if m.replace(".", "").isdigit() else 20
     return cfg
 
 

@@ -20,7 +20,10 @@ Tìm trong đề ba thứ: **dữ liệu là gì**, **phải đoán cái gì**, 
 | dữ liệu không có nhãn | chia thành nhóm | **5. KHÔNG CÓ NHÃN** | có |
 | video (vd người làm ký hiệu tay) | nhãn của cả đoạn video | **6. VIDEO** | có (mức cơ bản: nhìn 8 khung hình, không hiểu chuyển động) |
 | câu tiếng Trung / Anh / Việt | bản dịch sang tiếng kia | **7. DỊCH** | có (dùng mô hình dịch có sẵn, không học thêm từ train) |
-| ảnh | khoanh vật thể (hộp), tô vùng (mask), sinh ảnh | — | **không** → Phần D |
+| ảnh | **khoanh vật thể** (hộp), **đếm** vật thể | **8. KHOANH** (`CHAY_YOLO.bat`) | có → Phần B2 |
+| ảnh | **tô vùng** (mask, segmentation) | **8. KHOANH** việc 3–4 | có (cần dữ liệu định dạng YOLO) → Phần B2 |
+| ảnh có chữ (biển số, hoá đơn, biển hiệu...) | **đọc chữ** | **9. ĐỌC CHỮ** (`CHAY_OCR.bat`) | có → Phần B3 |
+| ảnh | sinh ảnh mới | — | **không** → Phần D |
 | văn bản | viết ra câu trả lời, tóm tắt | — | **không** → Phần D |
 | tiếng | chép lời nói thành chữ | — | **không** → Phần D |
 
@@ -46,6 +49,8 @@ Nếu đề có nhiều loại dữ liệu cùng lúc (ví dụ bảng + ảnh):
 | `Cột nào chứa TÊN / ĐƯỜNG DẪN file?` (kiểu 3, 4, 6) | cột ghi tên file ảnh / tiếng / video |
 | `Kéo thả THƯ MỤC chứa các file đó` (kiểu 3, 4, 6) | kéo thư mục chứa ảnh / tiếng / video vào |
 | `Bài toán: 1=PHÂN LOẠI 2=ĐOÁN CON SỐ` | 1 nếu đoán nhãn / loại; 2 nếu đoán một con số (giá, điểm, nhiệt độ...) |
+| `TINH CHỈNH thêm mạng nơ-ron? 1=CÓ 2=KHÔNG` (kiểu 3) | Enter (= CÓ). Máy **ghi file nộp chính trước**, rồi mới tinh chỉnh |
+| `Tinh chỉnh tối đa bao nhiêu phút?` | Enter (= 20). Ít thời gian thì gõ 10 |
 
 2. Máy tự học, in bảng điểm của từng cách làm, rồi dòng `=> CHỌN: ...` và `>>> FILE NỘP: ...`.
 3. **Nộp file** `KIT_BAI2\ket_qua\<tên lần chạy>\submission.csv`. Trước khi nộp, mở file ra so với file nộp mẫu của đề: cùng tên cột, cùng số dòng là được.
@@ -73,6 +78,42 @@ Tốc độ đo trên máy này với câu ngắn: máy NHANH 2–6 câu mỗi g
 **Nếu dòng FILE NỘP ghi `ghép THEO THỨ TỰ DÒNG (id không khớp ...)`:** máy không khớp được mã dòng giữa test và file mẫu. Chạy lại và chọn đúng cột id.
 
 **Chạy lại nhanh** (không phải trả lời lại): kéo file `ket_qua\<tên>\cau_hinh.json` thả lên **`CHAY_LAI_BAI2.bat`**.
+
+**Riêng kiểu 3 (ẢNH):** máy thử 3 bộ đọc ảnh có sẵn (ResNet50, CLIP, DINOv2), ghép cả ba, và "CLIP đoán theo tên nhãn" (không học, chỉ hợp khi nhãn là chữ tiếng Anh như `cat`, `dog`). Khi đã có file nộp chính, nếu chọn tinh chỉnh, máy học tiếp cả mạng MobileNetV3 trên ảnh của đề, rồi in một trong hai dòng:
+
+| dòng hiện ra | em làm gì |
+|---|---|
+| `>>> Tinh chỉnh TỐT HƠN ... Nên nộp: ...\tinh_chinh\submission.csv` | nộp file đó |
+| `>>> Tinh chỉnh KHÔNG hơn rõ ... Giữ file nộp chính` | không nộp gì thêm |
+
+Còn lượt nộp thì thử thêm `ket_qua\<tên>\tron_ca_hai\submission.csv` (trộn hai cách, thường tốt nhất). Web lấy lần nộp cao nhất nên thử không mất gì.
+
+### B2. Kiểu 8: KHOANH VẬT THỂ / TÔ VÙNG (bấm đúp `CHAY_YOLO.bat`)
+
+| máy hỏi | trả lời |
+|---|---|
+| `Việc gì?` | **1** = chỉ khoanh / đếm các vật thể thường gặp (người, xe, chó, mèo, chai, ghế... 80 loại), không cần học. **2** = đề có ảnh train kèm hộp → máy học rồi khoanh. **3** = tô vùng có sẵn. **4** = học tô vùng (đề phải cho dữ liệu định dạng YOLO) |
+| `Kéo thả file data.yaml ... HOẶC file csv ghi các hộp` | đề cho thư mục có `data.yaml` thì kéo file đó; đề cho file csv (mỗi dòng: tên ảnh, nhãn, 4 số toạ độ) thì kéo csv, máy hỏi tiếp tên các cột và tự chuyển |
+| `Toạ độ hộp kiểu gì?` | xem đề: `xmin, ymin, xmax, ymax` → **1**; `x, y, width, height` → **2**; số nhỏ hơn 1 (đã chia cho cỡ ảnh) → **3** |
+| `Học tối đa bao nhiêu phút?` | Enter (= 30) |
+| `Cỡ ảnh` | Enter (= 640) |
+| `THƯ MỤC ảnh test` | kéo thư mục ảnh test vào |
+| `Ngưỡng tự tin` | đề chấm bằng **mAP** → gõ `0.01`; đề **đếm** số lượng → Enter (= 0.25) |
+
+Máy in `TỰ CHẤM ... mAP50 = ...` (càng gần 1 càng tốt) rồi ghi:
+
+- `ket_qua\<tên>\du_doan.csv`: mỗi dòng một hộp (tên ảnh, loại, độ tin cậy, toạ độ theo cả hai kiểu);
+- `dem_so_luong.csv`: số vật thể mỗi ảnh;
+- `anh_ve_hop\`: 20 ảnh có vẽ hộp, mở ra xem máy khoanh có đúng không.
+
+File nộp của đề thường có định dạng riêng → dùng **mẫu D** (Phần D) nhờ AI viết đoạn đổi `du_doan.csv` sang đúng định dạng. Chạy lại: kéo `cau_hinh.json` thả lên `CHAY_LAI_YOLO.bat`.
+
+Tốc độ trên CPU: khoanh khoảng 10–20 ảnh mỗi giây; học khoảng 1–3 phút mỗi vòng cho 500 ảnh. 30 phút học thường đủ cho vài trăm ảnh.
+
+### B3. Kiểu 9: ĐỌC CHỮ TRONG ẢNH (bấm đúp `CHAY_OCR.bat`)
+
+Trả lời: tên lần chạy → ngôn ngữ (Enter = Việt + Anh) → kéo thư mục ảnh → (nếu đề có file chữ đúng) kéo file đó, chọn cột tên ảnh và cột chữ để máy tự chấm `CER` (càng thấp càng tốt).
+Kết quả: `ket_qua\<tên>\chu_doc_duoc.csv` (mỗi ảnh một dòng chữ), `tung_dong_chu.csv` (từng đoạn chữ + toạ độ). Định dạng nộp khác thì dùng mẫu D. Tốc độ: khoảng 1–3 giây mỗi ảnh.
 
 ---
 
@@ -119,7 +160,7 @@ Chỉ ra nguyên nhân và cách sửa ngắn nhất. Trả lời ngắn: chỉ 
 5 dòng đầu của file nộp mẫu: <dán>
 
 Máy tôi: Windows, CPU (không GPU), Python 3.13, KHÔNG có mạng. Đã cài: numpy, pandas, scikit-learn, lightgbm, torch, torchvision, transformers, sentence-transformers, sentencepiece, sacrebleu, opencv, pillow, soundfile, scipy, matplotlib.
-Mô hình có sẵn offline: ResNet18/50, MobileNetV3, EfficientNet-B0 (torchvision); openai/clip-vit-base-patch32; intfloat/multilingual-e5-small; bkai-foundation-models/vietnamese-bi-encoder; paraphrase-multilingual-MiniLM-L12-v2; Helsinki-NLP/opus-mt-zh-vi, opus-mt-en-vi, opus-mt-vi-en, opus-mt-en-zh; facebook/nllb-200-distilled-600M.
+Đã cài thêm: ultralytics (YOLO11), easyocr. Mô hình có sẵn offline: ResNet18/50, MobileNetV3, EfficientNet-B0 (torchvision); YOLO11n và YOLO11n-seg ở KIT_BAI2\mo_hinh\yolo11n.pt, yolo11n-seg.pt; EasyOCR vi+en, ch_sim+en; facebook/dinov2-small; openai/clip-vit-base-patch32; intfloat/multilingual-e5-small; bkai-foundation-models/vietnamese-bi-encoder; paraphrase-multilingual-MiniLM-L12-v2; Helsinki-NLP/opus-mt-zh-vi, opus-mt-en-vi, opus-mt-vi-en, opus-mt-en-zh; facebook/nllb-200-distilled-600M.
 
 Viết MỘT file Python hoàn chỉnh, chạy được ngay, đọc train/test từ đường dẫn tôi sẽ điền ở đầu file, và ghi submission.csv đúng định dạng file nộp mẫu. Ưu tiên cách đơn giản, chạy nhanh trên CPU. Không giải thích dài.
 ```
@@ -135,7 +176,19 @@ Thước đo của đề: <tên thước đo>.
 Đề xuất 2-3 thay đổi có khả năng tăng điểm nhất và đưa lại hàm đã sửa, đầy đủ. Trả lời ngắn.
 ```
 
-**Cách chạy code AI viết (mẫu B):** trong VS Code tạo file mới trong `KIT_BAI2`, đặt tên `giai.py`, dán code vào, sửa đường dẫn ở đầu file, lưu. Mở Terminal trong VS Code (**Ctrl + `**) và gõ:
+**Mẫu D — đổi kết quả sang đúng định dạng nộp (hay dùng với kiểu 8, 9):**
+
+```
+Tôi có file kết quả du_doan.csv, 5 dòng đầu:
+<dán>
+
+Đề yêu cầu file nộp dạng (mô tả của đề + 5 dòng đầu file nộp mẫu):
+<dán>
+
+Viết đoạn Python ngắn (pandas) đọc du_doan.csv và ghi submission.csv đúng định dạng trên. Ảnh không có vật thể nào vẫn phải có dòng nếu đề yêu cầu. Chỉ đưa code.
+```
+
+**Cách chạy code AI viết (mẫu B, D):** trong VS Code tạo file mới trong `KIT_BAI2`, đặt tên `giai.py`, dán code vào, sửa đường dẫn ở đầu file, lưu. Mở Terminal trong VS Code (**Ctrl + `**) và gõ:
 `& "C:\Users\Thanh Hue\.venv\Scripts\python.exe" giai.py`
 
 **Cách sửa một hàm trong `bai2.py` (mẫu A, C):** sao lưu file (Ctrl + C, Ctrl + V trong File Explorer) → mở `bai2.py` → Ctrl + F gõ `def <tên hàm>` → bôi đen cả hàm → dán hàm mới đè lên → Ctrl + S → kéo `cau_hinh.json` thả lên `CHAY_LAI_BAI2.bat`.
@@ -165,12 +218,14 @@ Các hàm chính trong `bai2.py`:
 | Hồi quy tuyến tính / logistic, Gradient Boosting, chấm chéo, accuracy / F1 / RMSE | có (mọi kiểu) |
 | K-Means, PCA | có (kiểu 5) |
 | Nhúng văn bản bằng mô hình có sẵn, phân loại văn bản, TF-IDF | có (kiểu 2) |
-| Bộ mã hóa ảnh có sẵn (ResNet), CLIP, phân loại ảnh | có (kiểu 3) |
+| Bộ mã hóa ảnh có sẵn (ResNet), CLIP, DINOv2, phân loại ảnh, tinh chỉnh (transfer learning), tăng cường dữ liệu (lật, cắt) | có (kiểu 3) |
+| Phát hiện vật thể (YOLO), phân vùng ảnh | có (kiểu 8, YOLO11n bản nhỏ, học trên CPU) |
+| Đọc chữ trong ảnh (OCR) | có (kiểu 9, EasyOCR) |
 | Âm thanh | chỉ có đặc trưng phổ mel; **không** có HuBERT / Whisper |
 | Mô hình mã hóa - giải mã (dịch máy) | có (kiểu 7): opus-mt Trung→Việt, Anh↔Việt, Anh→Trung; NLLB-200 cho mọi cặp. Chỉ dùng nguyên trạng, không tinh chỉnh |
 | Video | có (kiểu 6), mức cơ bản |
-| Tự huấn luyện mạng nơ-ron, tinh chỉnh (finetune), CNN từ đầu | **không** (máy không có GPU) |
-| Phát hiện vật thể (YOLO), phân vùng ảnh (U-Net), GAN, Diffusion | **không** |
+| CNN tự viết từ đầu, mạng lớn | **không** (máy không có GPU) |
+| U-Net, GAN, Diffusion | **không** |
 | Mô hình ngôn ngữ, sinh văn bản, tóm tắt | **không** |
 | t-SNE, UMAP, DBSCAN | **không** (nhờ AI thêm nếu đề cần; t-SNE và DBSCAN có sẵn trong scikit-learn) |
 
