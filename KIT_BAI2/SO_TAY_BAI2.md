@@ -96,7 +96,7 @@ Máy in `!!! LỖI: ...` kèm khoảng 20 dòng phía trên.
 
 Bài 2 là nơi đáng dùng token nhất, vì bài 1 đã chạy tự động.
 
-**Thứ tự nên làm:** đọc đề → chạy `CHAY_BAI2.bat` nếu khớp một trong 5 kiểu → nộp lấy điểm nền → **rồi mới** dùng AI để tăng điểm hoặc làm phần chưa khớp.
+**Thứ tự nên làm (lời thầy: nộp nhanh một bản có điểm trước, cải tiến sau):** đọc đề → chạy `CHAY_BAI2.bat` nếu khớp một trong 5 kiểu → nộp lấy điểm nền → **rồi mới** dùng AI để tăng điểm hoặc làm phần chưa khớp.
 
 **Mẫu A — có lỗi:**
 
