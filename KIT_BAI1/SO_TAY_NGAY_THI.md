@@ -209,6 +209,15 @@ Các hàm nằm ở đâu (mở file rồi Ctrl + F, gõ đúng chữ trong cộ
 - **Sửa để hết lỗi (mẫu A):** bấm đúp `CHAY_BAI1.bat` như cũ.
 - **Sửa cách đọc dữ liệu hoặc đặc trưng (mẫu B, C):** bấm đúp **`HOC_LAI.bat`**. Nó xóa phần đã học, giữ phần đã đọc ảnh, rồi học lại và ra file nộp mới.
 
+Cách bấm `HOC_LAI.bat`:
+
+1. Sửa code xong nhấn **Ctrl + S** trong VS Code để lưu.
+2. Đóng cửa sổ đen cũ nếu nó còn đang chạy.
+3. Mở **File Explorer** (Windows + E) → `Downloads` → `Phenikaa_Campus_Courier_2026` → `KIT_BAI1` → **bấm đúp `HOC_LAI.bat`**. Bấm trong VS Code thì nó chỉ mở ra chữ, **không chạy**.
+4. Không cần kéo thả dữ liệu: máy nhớ thư mục từ lần chạy `CHAY_BAI1.bat` đầu tiên.
+5. Đợi: khoảng 10 phút ra bản nền, thêm 25–45 phút ra bản nâng cao. Hiện `Press any key to continue...` là xong.
+6. Mở `KIT_BAI1\runs\chungket\nhat_ky_diem.txt`, so dòng cuối với dòng của file đã nộp: cao hơn ít nhất 0,01 thì nộp `predictions.json`, không thì giữ lượt.
+
 ### C5. Sửa xong mà tệ hơn hoặc lỗi nặng hơn
 
 1. Xóa file vừa sửa.
@@ -240,8 +249,8 @@ Các dòng `KHÁC` ở đầu cửa sổ đen cho biết bài mới có gì lạ
 |---|---|
 | 0–5 | một bạn làm Bước 1, 2 của Phần A. Các bạn còn lại đọc đề bài 2 |
 | 5–40 | script tự chạy; thỉnh thoảng liếc xem có `!!! BƯỚC LỖI` không |
-| ~40 | `FILE NỘP (bản nền)` → nộp, ghi điểm |
-| ~65–90 | `FILE NỘP (bản NÂNG CAO)` → nộp lại, ghi điểm |
+| ~40 | `FILE NỘP (bản nền)` → nộp nếu còn nhiều lượt (xem "Số lần nộp có hạn"), ghi điểm |
+| ~65–90 | `FILE NỘP (bản NÂNG CAO)` → nộp nếu script ghi `TỐT HƠN`, ghi điểm |
 | còn lại | làm bài 2 |
 
 Bài 1 chiếm máy khoảng một tiếng rưỡi. Nếu đội có máy thứ hai thì làm bài 2 trên máy đó.
