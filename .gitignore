@@ -12,3 +12,4 @@ KIT_BAI2/cache/
 KIT_BAI1/runs/*
 __pycache__/
 *.pyc
+KIT_BAI2/notebooks/work_b2/
