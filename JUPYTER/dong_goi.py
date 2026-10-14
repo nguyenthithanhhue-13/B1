@@ -1,7 +1,7 @@
 """ĐÓNG GÓI để mang lên JupyterHub (chạy trên MÁY NHÀ, máy Huệ):   python JUPYTER/dong_goi.py
 Tạo trong thư mục Desktop\\GOI_JUPYTER:
   kit.zip                 (~550 MB) KIT_BAI1 + KIT_BAI2 + JUPYTER + du_lieu_tap_duot  -> giải nén thành ~/B1 trên máy chủ
-  mo_hinh_bai2.zip        (~2,5 GB) mô hình bài 2: CLIP, DINOv2, ResNet/MobileNet, EasyOCR, e5, vietnamese-bi-encoder, MiniLM, opus-mt
+  mo_hinh_bai2.zip        (~3,7 GB) mô hình bài 2: CLIP, DINOv2, ResNet/MobileNet, EasyOCR, e5, vietnamese-bi-encoder, MiniLM, opus-mt
   mo_hinh_nllb.zip        (~2,4 GB) mô hình dịch NLLB-200 (chỉ cần nếu đề là DỊCH và máy chủ không có mạng)
 Chỉ cần hai file mô hình khi máy chủ KHÔNG có mạng.
 """
@@ -19,6 +19,7 @@ B1 = Path(__file__).resolve().parent.parent
 HOME = Path.home()
 OUT = HOME / "Desktop" / "GOI_JUPYTER"
 OUT.mkdir(parents=True, exist_ok=True)
+HF_SKIP_DIRS = {"onnx", "openvino"}      # bản xuất sang định dạng khác của mô hình, bài 2 không dùng
 SKIP_DIRS = {"runs", "ket_qua", "cache", "__pycache__", ".git"}
 HF = HOME / ".cache" / "huggingface" / "hub"
 BAI2_HF = ["openai--clip-vit-base-patch32", "facebook--dinov2-small", "intfloat--multilingual-e5-small",
@@ -28,12 +29,17 @@ BAI2_HF = ["openai--clip-vit-base-patch32", "facebook--dinov2-small", "intfloat-
 
 def add_tree(z, src, arc, skip=SKIP_DIRS):
     n = 0
+    main = (src / "refs" / "main").read_text().strip() if (src / "refs" / "main").exists() else None      # bản mô hình đang dùng
     for root, dirs, files in os.walk(src):
-        dirs[:] = [d for d in dirs if d not in skip and not d.startswith("blobs")]
+        if main and Path(root) == src / "snapshots":
+            dirs[:] = [d for d in dirs if d == main]      # bỏ các bản tải về ở lần trước
+        dirs[:] = [d for d in dirs if d not in skip and not d.startswith("blobs") and not (".cache" in arc.parts and d in HF_SKIP_DIRS)]
         for f in files:
             p = Path(root) / f
             if p.suffix == ".zip" or f.endswith(".incomplete") or f.endswith(".lock"):
                 continue
+            if ".cache" in arc.parts and (p.suffix in (".h5", ".msgpack", ".ot") or (f == "pytorch_model.bin" and (p.parent / "model.safetensors").exists())):
+                continue      # bản trùng định dạng khác (TensorFlow, Flax, Rust, hoặc .bin khi đã có .safetensors)
             z.write(p, (arc / p.relative_to(src)).as_posix())
             n += 1
     return n

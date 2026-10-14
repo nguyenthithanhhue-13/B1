@@ -14,7 +14,7 @@ Mở Terminal trong VS Code (hoặc cửa sổ lệnh) tại thư mục `Phenika
 & "C:\Users\Thanh Hue\.venv\Scripts\python.exe" JUPYTER\dong_goi.py
 ```
 
-Sẽ có thư mục **`Desktop\GOI_JUPYTER`** gồm `kit.zip` (bộ đồ nghề) và `mo_hinh_bai2.zip` (mô hình bài 2, chỉ cần nếu máy chủ không có mạng). Chép cả thư mục này vào **USB** để dự phòng.
+Sẽ có thư mục **`Desktop\GOI_JUPYTER`** gồm `kit.zip` (bộ đồ nghề) và `mo_hinh_bai2.zip` (3,7 GB, mô hình bài 2, chỉ cần nếu máy chủ không có mạng). Chép cả thư mục này vào **USB** để dự phòng.
 
 ---
 
