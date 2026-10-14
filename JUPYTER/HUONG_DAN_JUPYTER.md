@@ -6,7 +6,7 @@ Mọi lệnh dưới đây: bôi đen → Ctrl + C → bấm vào Terminal → *
 
 ---
 
-## Bước 0. Tối nay ở nhà: đóng gói (máy Huệ, cần làm một lần)
+## Bước 0. Dự phòng (đã làm sẵn trên máy Huệ)
 
 Mở Terminal trong VS Code (hoặc cửa sổ lệnh) tại thư mục `Phenikaa_Campus_Courier_2026`, gõ:
 
@@ -24,26 +24,21 @@ Sẽ có thư mục **`Desktop\GOI_JUPYTER`** gồm `kit.zip` (bộ đồ nghề
 2. Màn hình chính: bên trái là **cây thư mục** (giống File Explorer), bên phải là trang **Launcher**.
 3. Trong Launcher bấm **Terminal** (hoặc menu **File → New → Terminal**). Cửa sổ đen hiện ra.
 
-## Bước 2. Đưa bộ đồ nghề lên (chọn một cách)
+## Bước 2. Đưa bộ đồ nghề lên
 
-**Cách A — upload `kit.zip` (chắc chắn chạy được):**
+**Cách A — máy chủ có mạng (cách chính, nhanh nhất).** Dán vào Terminal:
 
-1. Ở cây thư mục bên trái, bấm biểu tượng **mũi tên lên (Upload)** ở phía trên → chọn `Desktop\GOI_JUPYTER\kit.zip`. Đợi thanh tiến trình chạy xong (550 MB).
-2. Dán vào Terminal:
+```
+cd ~ && git clone https://github.com/nguyenthithanhhue-13/B1 && ls ~/B1
+```
+
+Thấy `JUPYTER  KIT_BAI1  KIT_BAI2  README.md  du_lieu_tap_duot` là được. (File mô hình 470 MB của bài 1 nếu thiếu sẽ được lệnh cài đặt ở bước 3 tự tải lại.)
+
+**Cách B — dự phòng, khi `git clone` báo lỗi:** ở cây thư mục bên trái bấm biểu tượng **mũi tên lên (Upload)** → chọn `Desktop\GOI_JUPYTER\kit.zip` trên máy mình → đợi tải lên xong (0,6 GB), rồi dán:
 
 ```
 cd ~ && python -m zipfile -e kit.zip ~ && ls ~/B1
 ```
-
-Thấy `JUPYTER  KIT_BAI1  KIT_BAI2  du_lieu_tap_duot` là được.
-
-**Cách B — máy chủ có mạng và có git-lfs:**
-
-```
-cd ~ && git lfs install && git clone https://github.com/nguyenthithanhhue-13/B1
-```
-
-(Nếu bước 3 báo `thiếu ... model.onnx` thì dùng cách A.)
 
 ## Bước 3. Cài đặt (một lần, 5–20 phút)
 

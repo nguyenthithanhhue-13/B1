@@ -35,8 +35,14 @@ else
 fi
 
 echo "=================== 5. Kiểm tra bài 1 ==================="
-S=$(stat -c %s "$B1/KIT_BAI1/outputs/e5_small/onnx/model.onnx" 2>/dev/null || echo 0)
+M="$B1/KIT_BAI1/outputs/e5_small/onnx/model.onnx"
+S=$(stat -c %s "$M" 2>/dev/null || echo 0)
+if [ "$S" -lt 100000000 ]; then      # git clone không có git-lfs: file chỉ là "con trỏ" vài trăm byte -> tải lại từ Hugging Face
+  echo "thiếu mô hình đọc câu của bài 1 -> tải lại (470 MB) ..."
+  rm -f "$M"; (cd "$B1/KIT_BAI1" && env -u HF_HUB_OFFLINE -u TRANSFORMERS_OFFLINE python src/embed.py download)
+  S=$(stat -c %s "$M" 2>/dev/null || echo 0)
+fi
 if [ "$S" -gt 100000000 ]; then echo "[ok] mô hình đọc câu của bài 1 có đủ ($((S/1000000)) MB)"; else
-  echo "[LỖI] thiếu KIT_BAI1/outputs/e5_small/onnx/model.onnx (phải ~470 MB). Hãy upload kit.zip thay vì git clone."; fi
+  echo "[LỖI] không tải được KIT_BAI1/outputs/e5_small/onnx/model.onnx (phải ~470 MB). Upload kit.zip thay vì git clone."; fi
 chmod +x "$B1"/JUPYTER/*.sh 2>/dev/null
 echo "XONG CÀI ĐẶT. Chạy bài 1:  bash ~/B1/JUPYTER/bai1.sh <thư mục dữ liệu>"
