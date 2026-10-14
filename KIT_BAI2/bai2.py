@@ -9,6 +9,8 @@ Làm được 5 kiểu bài:
   3. ẢNH: phân loại ảnh                                                          ResNet50 / CLIP có sẵn trong máy + hồi quy logistic
   4. ÂM THANH: phân loại file tiếng (wav / flac / ogg / mp3)                    phổ mel + LightGBM
   5. KHÔNG CÓ NHÃN: chia nhóm (phân cụm) + vẽ hình 2 chiều                      KMeans + PCA
+  6. VIDEO: phân loại đoạn phim (vd ngôn ngữ ký hiệu)                            lấy 8 khung hình mỗi video -> ResNet50 / CLIP
+  7. DỊCH: Trung <-> Việt, Anh <-> Việt                                          mô hình dịch opus-mt có sẵn trong máy
 Mọi mô hình đều chạy offline (đã tải sẵn trong máy). Kết quả: ket_qua\\<tên>\\submission.csv và bao_cao.txt.
 """
 import hashlib
@@ -39,8 +41,14 @@ CACHE.mkdir(exist_ok=True)
 SEED = 0
 IMG_EXT = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".gif", ".tif", ".tiff"}
 AUD_EXT = {".wav", ".flac", ".ogg", ".mp3", ".m4a", ".aiff"}
+VID_EXT = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".m4v", ".mpg", ".mpeg", ".wmv"}
+MT_MODELS = {"zh-vi": "Helsinki-NLP/opus-mt-zh-vi", "en-vi": "Helsinki-NLP/opus-mt-en-vi", "vi-en": "Helsinki-NLP/opus-mt-vi-en", "en-zh": "Helsinki-NLP/opus-mt-en-zh"}
+NLLB = "facebook/nllb-200-distilled-600M"      # mô hình dịch đa ngôn ngữ (615 triệu tham số, chậm hơn nhưng dịch tốt hơn và dịch được mọi cặp)
+NLLB_LANG = {"vi": "vie_Latn", "zh": "zho_Hans", "en": "eng_Latn", "ja": "jpn_Jpan", "ko": "kor_Hang", "fr": "fra_Latn", "de": "deu_Latn",
+             "th": "tha_Thai", "lo": "lao_Laoo", "km": "khm_Khmr", "ru": "rus_Cyrl", "es": "spa_Latn", "id": "ind_Latn"}
 TEXT_MODELS = ["intfloat/multilingual-e5-small", "bkai-foundation-models/vietnamese-bi-encoder"]
 LOG = []
+NL = chr(10)
 
 
 def say(*a):
@@ -297,8 +305,36 @@ def text_features(tr_texts, te_texts):
 
 
 # ======================= đặc trưng: ẢNH =======================
-def image_embed(paths, which):
-    key = which + "|" + hashlib.md5("\n".join(f"{p}:{Path(p).stat().st_size}" for p in paths).encode("utf-8")).hexdigest()
+def frames_of(path, n=8):
+    """Lấy n khung hình cách đều của một video (ảnh PIL)."""
+    import cv2
+    from PIL import Image
+    cap = cv2.VideoCapture(str(path))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    out = []
+    if total > 0:
+        for i in np.linspace(0, max(0, total - 1), n).astype(int):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
+            ok, fr = cap.read()
+            if ok:
+                out.append(Image.fromarray(cv2.cvtColor(fr, cv2.COLOR_BGR2RGB)))
+    if not out:      # không biết số khung: đọc hết rồi lấy đều
+        cap.release()
+        cap = cv2.VideoCapture(str(path))
+        allf = []
+        while len(allf) < 2000:
+            ok, fr = cap.read()
+            if not ok:
+                break
+            allf.append(fr)
+        if allf:
+            out = [Image.fromarray(cv2.cvtColor(allf[i], cv2.COLOR_BGR2RGB)) for i in np.linspace(0, len(allf) - 1, min(n, len(allf))).astype(int)]
+    cap.release()
+    return out
+
+
+def image_embed(paths, which, video=False):
+    key = which + ("|video" if video else "") + "|" + hashlib.md5("\n".join(f"{p}:{Path(p).stat().st_size}" for p in paths).encode("utf-8")).hexdigest()
 
     def run():
         import torch
@@ -322,27 +358,34 @@ def image_embed(paths, which):
                 o = net.get_image_features(**{k: v.to(dev) for k, v in proc(images=ims, return_tensors="pt").items()})
                 return o if isinstance(o, torch.Tensor) else o.pooler_output
         with torch.no_grad():
-            for i in range(0, len(paths), 32):
-                ims = []
-                for p in paths[i:i + 32]:
+            step = 4 if video else 32
+            for i in range(0, len(paths), step):
+                groups = []
+                for p in paths[i:i + step]:
                     try:
-                        ims.append(Image.open(p).convert("RGB"))
+                        g = frames_of(p) if video else [Image.open(p).convert("RGB")]
                     except Exception:
-                        ims.append(Image.new("RGB", (224, 224)))
-                out.append(fwd(ims).float().cpu().numpy())
-                if (i // 32) % 10 == 0:
-                    print(f"      {which}: {min(i + 32, len(paths))}/{len(paths)} ảnh", flush=True)
-        return np.concatenate(out)
+                        g = []
+                    groups.append(g or [Image.new("RGB", (224, 224))])
+                flat = [im for g in groups for im in g]
+                f = np.concatenate([fwd(flat[j:j + 32]).float().cpu().numpy() for j in range(0, len(flat), 32)])
+                pos = 0
+                for g in groups:      # video: trung bình đặc trưng của các khung hình
+                    out.append(f[pos:pos + len(g)].mean(0))
+                    pos += len(g)
+                if (i // step) % 10 == 0:
+                    print(f"      {which}: {min(i + step, len(paths))}/{len(paths)} {'video' if video else 'ảnh'}", flush=True)
+        return np.stack(out)
 
     return np.asarray(cached(key, run), dtype=np.float32)
 
 
-def image_features(tr_paths, te_paths):
+def image_features(tr_paths, te_paths, video=False):
     F = {}
     for which in ("resnet50", "clip"):
         try:
             t = time.time()
-            F[which] = (image_embed(tr_paths, which), image_embed(te_paths, which), "day")
+            F[which] = (image_embed(tr_paths, which, video), image_embed(te_paths, which, video), "day")
             say(f"   đã rút đặc trưng ảnh bằng {which} ({time.time() - t:.0f}s)")
         except Exception as e:
             say(f"   không dùng được {which} ({type(e).__name__}: {str(e)[:100]})")
@@ -453,18 +496,20 @@ def run(cfg):
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "cau_hinh.json").write_text(json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8")
     t0 = time.time()
+    if kind == "dich":
+        return run_translate(cfg, folder)
     if kind == "cum":
         return run_cluster(cfg, folder)
-    exts = IMG_EXT if kind == "anh" else AUD_EXT
+    exts = {"anh": IMG_EXT, "video": VID_EXT}.get(kind, AUD_EXT)
     # ---- nạp bảng train / test ----
-    if kind in ("anh", "amthanh") and clean_path(cfg["train"]).is_dir():
+    if kind in ("anh", "amthanh", "video") and clean_path(cfg["train"]).is_dir():
         train = folder_to_table(cfg["train"], exts, labeled=True)
         cfg.setdefault("cot_duong_dan", "duong_dan"), cfg.setdefault("cot_dich", "nhan")
         if "nhan" not in train.columns:
             raise RuntimeError("Thư mục train phải có thư mục con cho từng lớp (vd train\\meo\\..., train\\cho\\...).")
     else:
         train = read_table(cfg["train"])
-    if kind in ("anh", "amthanh") and clean_path(cfg["test"]).is_dir():
+    if kind in ("anh", "amthanh", "video") and clean_path(cfg["test"]).is_dir():
         test = folder_to_table(cfg["test"], exts, labeled=False)
         cfg.setdefault("cot_id", "id")
     else:
@@ -511,11 +556,84 @@ def run(cfg):
         miss = [p for p in trp + tep if not Path(p).exists()]
         if miss:
             raise RuntimeError(f"Không thấy {len(miss)} file (vd {miss[0]}). Kiểm tra lại 'thư mục gốc' của đường dẫn.")
-        F = image_features(trp, tep) if kind == "anh" else audio_features(trp, tep)
+        F = image_features(trp, tep, video=(kind == "video")) if kind in ("anh", "video") else audio_features(trp, tep)
     pred, proba, board, best = fit_predict(F, y, task, cfg.get("chi_so"))
     write_submission(folder, ids, pred, proba, idc, target, cfg.get("mau_nop"))
     say(f"Xong sau {(time.time() - t0) / 60:.1f} phút. Cấu hình đã lưu: {folder / 'cau_hinh.json'}")
     (folder / "bao_cao.txt").write_text("\n".join(LOG), encoding="utf-8")
+
+
+def translate(texts, direction, batch=8, engine="opus"):
+    """engine: 'opus' = mô hình nhỏ, nhanh (chỉ zh-vi, en-vi, vi-en, en-zh; vi-zh đi vòng qua tiếng Anh);
+               'nllb' = mô hình đa ngôn ngữ, chậm hơn khoảng 3-5 lần, thường dịch tốt hơn."""
+    import torch
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    a, b = direction.split("-")
+    gen_kw = {}
+    if engine == "nllb" or (direction not in MT_MODELS and direction != "vi-zh"):
+        from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+        tok = AutoTokenizer.from_pretrained(NLLB, src_lang=NLLB_LANG[a])
+        net = AutoModelForSeq2SeqLM.from_pretrained(NLLB).eval().to(dev)
+        gen_kw = {"forced_bos_token_id": tok.convert_tokens_to_ids(NLLB_LANG[b])}
+        batch = min(batch, 4)
+    elif direction == "vi-zh":      # không có mô hình nhỏ dịch thẳng Việt -> Trung: dịch Việt -> Anh -> Trung
+        return translate(translate(texts, "vi-en", batch), "en-zh", batch)
+    else:
+        from transformers import MarianMTModel, MarianTokenizer
+        tok = MarianTokenizer.from_pretrained(MT_MODELS[direction])
+        net = MarianMTModel.from_pretrained(MT_MODELS[direction]).eval().to(dev)
+    order = sorted(range(len(texts)), key=lambda i: len(texts[i]))      # câu dài ngắn gần nhau vào cùng lô cho nhanh
+    out = [""] * len(texts)
+    t = time.time()
+    with torch.no_grad():
+        for b in range(0, len(order), batch):
+            idx = order[b:b + batch]
+            enc = tok([texts[i] if texts[i].strip() else "." for i in idx], return_tensors="pt", padding=True, truncation=True, max_length=256).to(dev)
+            # chặn dịch lặp vô tận: giới hạn độ dài theo câu nguồn + cấm lặp cụm 4 từ
+            gen = net.generate(**enc, num_beams=4, max_new_tokens=int(min(256, 2 * enc["input_ids"].shape[1] + 16)), no_repeat_ngram_size=4, **gen_kw)
+            for i, o in zip(idx, tok.batch_decode(gen, skip_special_tokens=True)):
+                out[i] = o if texts[i].strip() else ""
+            if (b // batch) % 10 == 0:
+                print(f"      đã dịch {min(b + batch, len(order))}/{len(order)} câu ({time.time() - t:.0f}s)", flush=True)
+    return out
+
+
+def run_translate(cfg, folder):
+    direction = cfg["huong"]
+    test = read_table(cfg["test"])
+    src = cfg["cot_nguon"]
+    idc = cfg.get("cot_id")
+    texts = test[src].fillna("").astype(str).tolist()
+    engine = cfg.get("may_dich", "opus")
+    say(f"Kiểu bài: dịch {direction} | test {test.shape} | cột nguồn: {src} | máy dịch: {engine}")
+    memo = {}
+    tcol = cfg.get("cot_dich")
+    if cfg.get("train"):
+        tr = read_table(cfg["train"])
+        if src in tr.columns and tcol in tr.columns:
+            memo = dict(zip(tr[src].astype(str).str.strip(), tr[tcol].astype(str)))
+            try:      # chấm thử mô hình dịch trên tối đa 100 câu train
+                import sacrebleu
+                sm = tr.dropna(subset=[src, tcol]).sample(min(100, len(tr)), random_state=SEED)
+                hyp = translate(sm[src].astype(str).tolist(), direction, engine=engine)
+                ref = sm[tcol].astype(str).tolist()
+                tk = "zh" if direction.endswith("zh") else "13a"
+                say(f"   điểm tự chấm trên {len(sm)} câu train: BLEU = {sacrebleu.corpus_bleu(hyp, [ref], tokenize=tk).score:.1f}   chrF = {sacrebleu.corpus_chrf(hyp, [ref]).score:.1f}")
+                for a, b, c in list(zip(sm[src].astype(str), hyp, ref))[:3]:
+                    say(f"      nguồn: {a[:80]}")
+                    say(f"      máy  : {b[:80]}")
+                    say(f"      đúng : {c[:80]}")
+            except Exception as e:
+                say(f"   (không chấm thử được: {type(e).__name__}: {str(e)[:100]})")
+    need = [i for i, t in enumerate(texts) if t.strip() not in memo]
+    out = [memo.get(t.strip(), "") for t in texts]
+    if memo:
+        say(f"   {len(texts) - len(need)} câu test có sẵn bản dịch trong train (dùng luôn), còn {len(need)} câu phải dịch")
+    for i, o in zip(need, translate([texts[i] for i in need], direction, engine=engine)):
+        out[i] = o
+    ids = test[idc] if idc and idc in test.columns else pd.Series(range(len(test)), name="id")
+    write_submission(folder, ids, out, None, idc, tcol or "ban_dich", cfg.get("mau_nop"))
+    (folder / "bao_cao.txt").write_text(NL.join(LOG), encoding="utf-8")
 
 
 def run_cluster(cfg, folder):
@@ -602,10 +720,33 @@ def show_cols(df):
 
 def wizard():
     print(__doc__)
-    k = ask("Kiểu bài? 1=BẢNG  2=VĂN BẢN  3=ẢNH  4=ÂM THANH  5=KHÔNG CÓ NHÃN (chia nhóm)", "1")
-    cfg = {"kieu": {"1": "bang", "2": "vanban", "3": "anh", "4": "amthanh", "5": "cum"}.get(k, "bang")}
+    k = ask("Kiểu bài? 1=BẢNG  2=VĂN BẢN  3=ẢNH  4=ÂM THANH  5=KHÔNG CÓ NHÃN (chia nhóm)  6=VIDEO  7=DỊCH", "1")
+    cfg = {"kieu": {"1": "bang", "2": "vanban", "3": "anh", "4": "amthanh", "5": "cum", "6": "video", "7": "dich"}.get(k, "bang")}
     cfg["ten"] = ask("Đặt tên cho lần chạy này (không dấu, không cách)", time.strftime("lan_%H%M"))
-    media = cfg["kieu"] in ("anh", "amthanh")
+    media = cfg["kieu"] in ("anh", "amthanh", "video")
+    if cfg["kieu"] == "dich":
+        h = ask("Dịch hướng nào? 1=Trung->Việt  2=Việt->Trung  3=Anh->Việt  4=Việt->Anh  5=cặp khác", "1")
+        cfg["huong"] = {"1": "zh-vi", "2": "vi-zh", "3": "en-vi", "4": "vi-en"}.get(h, "zh-vi")
+        if h == "5":
+            print("   Mã ngôn ngữ: " + " ".join(NLLB_LANG))
+            cfg["huong"] = ask("Gõ cặp ngôn ngữ dạng nguồn-đích, vd vi-ja", "vi-en")
+        m = ask("Máy dịch? 1=NHANH (mô hình nhỏ)  2=TỐT HƠN nhưng chậm gấp 3-5 lần (NLLB)", "1")
+        cfg["may_dich"] = "nllb" if m == "2" or cfg["huong"] not in list(MT_MODELS) + ["vi-zh"] else "opus"
+        cfg["test"] = ask_path("Kéo thả FILE test (các câu cần dịch) vào đây")
+        te = read_table(cfg["test"])
+        show_cols(te)
+        cfg["cot_nguon"] = pick_col(te, "Cột nào chứa câu CẦN DỊCH?", str(next((c for c in te.columns if not pd.api.types.is_numeric_dtype(te[c])), te.columns[-1])))
+        cfg["cot_id"] = pick_col(te, "Cột nào là MÃ dòng (id)?", next((str(c) for c in te.columns if c != cfg["cot_nguon"]), None), allow_empty=True)
+        cfg["mau_nop"] = ask_path("Kéo thả FILE NỘP MẪU vào đây (Enter = không có)", allow_empty=True)
+        cfg["train"] = ask_path("Kéo thả FILE train (các cặp câu đã dịch) vào đây (Enter = không có)", allow_empty=True)
+        if cfg["train"]:
+            tr = read_table(cfg["train"])
+            show_cols(tr)
+            cfg["cot_dich"] = pick_col(tr, "Trong train, cột nào chứa BẢN DỊCH đúng?", str(next((c for c in tr.columns if c not in te.columns), tr.columns[-1])))
+        elif cfg["mau_nop"]:
+            sm = read_table(cfg["mau_nop"])
+            cfg["cot_dich"] = str(next((c for c in sm.columns if c != cfg["cot_id"]), sm.columns[-1]))
+        return cfg
     cfg["train"] = ask_path("Kéo thả FILE train (csv / xlsx)" + (" HOẶC THƯ MỤC train (mỗi lớp một thư mục con)" if media else "") + " vào đây")
     if cfg["kieu"] == "cum":
         df = read_table(cfg["train"])
@@ -642,7 +783,7 @@ def wizard():
             t = ask("Các cột VĂN BẢN (tên / số, cách nhau dấu phẩy)", ",".join(map(str, cand)))
             cfg["cot_van_ban"] = [df.columns[int(x)] if x.strip().isdigit() else x.strip() for x in t.split(",")]
         if media:
-            cand = next((c for c in df.columns if df[c].astype(str).str.lower().str.endswith(tuple(IMG_EXT | AUD_EXT)).mean() > 0.5), df.columns[0])
+            cand = next((c for c in df.columns if df[c].astype(str).str.lower().str.endswith(tuple(IMG_EXT | AUD_EXT | VID_EXT)).mean() > 0.5), df.columns[0])
             cfg["cot_duong_dan"] = pick_col(df, "Cột nào chứa TÊN / ĐƯỜNG DẪN file?", str(cand))
             cfg["thu_muc_goc"] = ask_path("Kéo thả THƯ MỤC chứa các file đó vào đây (Enter = cùng chỗ với file bảng)", allow_empty=True)
         y = df[cfg["cot_dich"]]
