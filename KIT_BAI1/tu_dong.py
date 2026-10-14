@@ -174,7 +174,7 @@ def write_submission(label):
 wait_cv("test")
 write_submission("4")
 print(f"      Điểm tự chấm của bản nền: {fmt(S_NEN)}")
-print("      SỐ LẦN NỘP CÓ HẠN: còn nhiều lượt thì nộp file này ngay để có điểm; chỉ còn ít lượt (3 trở xuống) thì CHỜ bản nâng cao rồi nộp một lần.")
+print("      SỐ LẦN NỘP CÓ HẠN: NỘP file này ngay để có điểm trước (chỉ khi BTC cho nộp đúng 1 lần thì CHỜ bản nâng cao).")
 print("      Script đang tự học tiếp mô hình mạnh hơn (25-45 phút); đừng tắt cửa sổ này.", flush=True)
 
 # 5-7. nâng cao: mô hình chiến thuật mạnh hơn cho từng robot, rồi ghi lại file nộp

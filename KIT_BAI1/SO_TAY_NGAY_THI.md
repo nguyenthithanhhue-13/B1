@@ -56,8 +56,8 @@ Trước giờ thi hỏi BTC hai câu: *mỗi bài được nộp mấy lần?* 
 | còn bao nhiêu lượt cho bài 1 | làm gì |
 |---|---|
 | 5 trở lên | nộp bản nền ngay; nộp bản nâng cao nếu script ghi `TỐT HƠN`; giữ lại ít nhất 1 lượt cho cải tiến |
-| 3–4 | **không** nộp bản nền; chờ bản nâng cao rồi nộp một lần; còn lại để dành cho cải tiến |
-| 1–2 | chỉ nộp một lần vào cuối giờ, chọn file có điểm tự chấm cao nhất trong `nhat_ky_diem.txt` |
+| 2–4 | **vẫn nộp bản nền ngay** để có điểm (lời thầy); bản nâng cao chỉ nộp nếu script ghi `TỐT HƠN`; giữ ít nhất 1 lượt cho cải tiến |
+| chỉ 1 | chờ bản nâng cao (hoặc cuối giờ), nộp file có điểm tự chấm cao nhất trong `nhat_ky_diem.txt` |
 
 Quy tắc chung:
 
