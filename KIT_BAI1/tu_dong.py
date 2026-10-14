@@ -135,6 +135,21 @@ if os.environ.get("CHI_DO") == "1":
     print(f"{clock()} CHI_DO=1: dừng sau chẩn đoán, không ghi file nộp.")
     sys.exit(0)
 
+def self_score():
+    """Điểm tự chấm trên validation của lần chẩn đoán gần nhất (dòng (4) trong bảng CHẨN ĐOÁN); None nếu chưa có."""
+    try:
+        return float(json.loads((WORK / "outputs" / "chan_doan.json").read_text(encoding="utf-8"))["diem"]["cn"])
+    except Exception:
+        return None
+
+
+def fmt(x):
+    return "chưa đo được" if x is None else f"{x:.4f}"
+
+
+S_NEN = self_score()
+
+
 # 4. file nộp
 def write_submission(label):
     """Chạy dự đoán trên test, kiểm tra định dạng, chép ra runs/<tên>/predictions.json (+ một bản có giờ)."""
@@ -147,15 +162,20 @@ def write_submission(label):
     if not ok:
         print(f"{clock()} !!! SAI ĐỊNH DẠNG ({len(preds)} dòng / test có {n_rows} dòng): đừng nộp file này.")
         return False
+    stamp = f"predictions_{time.strftime('%H%M')}.json"
     shutil.copy(src, WORK / "predictions.json")
-    shutil.copy(src, WORK / f"predictions_{time.strftime('%H%M')}.json")
+    shutil.copy(src, WORK / stamp)
+    with open(WORK / "nhat_ky_diem.txt", "a", encoding="utf-8") as f:      # sổ ghi: mỗi file nộp đã tạo + điểm tự chấm của nó
+        f.write(f"{time.strftime('%H:%M')}  {'bản nền' if label.startswith('4') else 'bản nâng cao'}  điểm tự chấm {fmt(self_score())}  file {stamp}\n")
     print(f"\n{clock()} >>> FILE NỘP ({'bản nền' if label.startswith('4') else 'bản NÂNG CAO'}): {WORK / 'predictions.json'}   ({len(preds)} dòng, HỢP LỆ)\n", flush=True)
     return True
 
 
 wait_cv("test")
 write_submission("4")
-print("      NỘP NGAY file trên. Script sẽ tự học tiếp mô hình mạnh hơn; đừng tắt cửa sổ này.", flush=True)
+print(f"      Điểm tự chấm của bản nền: {fmt(S_NEN)}")
+print("      SỐ LẦN NỘP CÓ HẠN: còn nhiều lượt thì nộp file này ngay để có điểm; chỉ còn ít lượt (3 trở xuống) thì CHỜ bản nâng cao rồi nộp một lần.")
+print("      Script đang tự học tiếp mô hình mạnh hơn (25-45 phút); đừng tắt cửa sổ này.", flush=True)
 
 # 5-7. nâng cao: mô hình chiến thuật mạnh hơn cho từng robot, rồi ghi lại file nộp
 if os.environ.get("NANG_CAO", "1") == "1":
@@ -164,7 +184,15 @@ if os.environ.get("NANG_CAO", "1") == "1":
     if (WORK / "outputs" / "chon.json").exists():
         step("6 chẩn đoán lại validation", ["nen.py", "chandoan"], show=11, must=False)
         if write_submission("7"):
-            print("      NỘP LẠI file trên (bản nền vẫn còn ở predictions_ban_nen.json).")
+            s_nc = self_score()
+            shutil.copy(WORK / "predictions.json", WORK / "predictions_nang_cao.json")
+            if S_NEN is not None and s_nc is not None and s_nc < S_NEN + 0.003:
+                shutil.copy(WORK / "predictions_ban_nen.json", WORK / "predictions.json")
+                print(f"      Bản nâng cao KHÔNG hơn bản nền trên validation ({fmt(S_NEN)} -> {fmt(s_nc)}).")
+                print("      => predictions.json đã được TRẢ VỀ BẢN NỀN. Nếu đã nộp bản nền rồi thì KHÔNG cần nộp lại (đỡ tốn lượt).")
+            else:
+                print(f"      Bản nâng cao TỐT HƠN trên validation: {fmt(S_NEN)} -> {fmt(s_nc)}.  => NỘP file predictions.json này.")
+                print("      (bản nền vẫn còn ở predictions_ban_nen.json)")
     else:
         print(f"{clock()} Không có bản nâng cao: giữ file nộp bản nền.")
-print(f"{clock()} XONG TẤT CẢ. Bảng CHẨN ĐOÁN ở trên cho biết khâu nào còn yếu (SO_TAY_NGAY_THI.md mục 3).")
+print(f"{clock()} XONG TẤT CẢ. Các file nộp đã tạo và điểm tự chấm của từng file: {WORK / 'nhat_ky_diem.txt'}")

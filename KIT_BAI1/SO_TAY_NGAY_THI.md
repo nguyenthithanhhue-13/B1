@@ -34,9 +34,11 @@ Cửa sổ đen sẽ lần lượt hiện các dòng sau. Số ở đầu dòng 
 | `2b học ...`, `2c học ...` | máy học lại trên bài mới | chờ |
 | `chờ đọc ảnh validation xong` | đang chờ đọc ảnh | chờ (bước lâu nhất) |
 | bảng `=== CHẨN ĐOÁN ===` | điểm tự chấm | xem dòng `(4) ... = ĐIỂM THẬT` |
-| **`>>> FILE NỘP (bản nền): ...`** | có file nộp thứ nhất | **nộp ngay** (xem dưới) |
+| **`>>> FILE NỘP (bản nền): ...`** và `Điểm tự chấm của bản nền` | có file nộp thứ nhất | nộp ngay **nếu còn nhiều lượt nộp**; ít lượt thì chờ (xem "Số lần nộp có hạn" ngay dưới) |
 | `5 nâng cao ...` | máy tự học tiếp cho điểm cao hơn | chờ 25–45 phút |
-| **`>>> FILE NỘP (bản NÂNG CAO): ...`** | có file nộp tốt hơn | **nộp lại** |
+| **`>>> FILE NỘP (bản NÂNG CAO): ...`** rồi một trong hai dòng: | | |
+| `Bản nâng cao TỐT HƠN ... => NỘP file predictions.json này` | bản nâng cao tự chấm cao hơn | **nộp** |
+| `Bản nâng cao KHÔNG hơn bản nền ... TRẢ VỀ BẢN NỀN` | bản nâng cao không tốt hơn; file nộp đã được trả về bản nền | đã nộp bản nền rồi thì **không nộp nữa** (đỡ tốn lượt) |
 | `XONG TẤT CẢ` | xong bài 1 | chuyển sang bài 2 |
 
 **Đọc bảng soi dữ liệu** (hiện ngay đầu, sau khoảng 10 giây):
@@ -47,9 +49,27 @@ Cửa sổ đen sẽ lần lượt hiện các dòng sau. Số ở đầu dòng 
   - Dòng `ảnh: ...` lệch → phần đọc bản đồ sẽ sai nhiều hơn trên test.
 - Ví dụ thật: ở vòng private, câu trong test dài hơn validation (265 so với 233 ký tự), nhiều câu không dấu hơn (41% so với 34%); đó là một lý do điểm web (0,83–0,87) thấp hơn điểm tự chấm (0,93).
 
+**Số lần nộp có hạn — làm thế này:**
+
+Trước giờ thi hỏi BTC hai câu: *mỗi bài được nộp mấy lần?* và *điểm cuối tính bài nộp cao nhất hay bài nộp sau cùng?*
+
+| còn bao nhiêu lượt cho bài 1 | làm gì |
+|---|---|
+| 5 trở lên | nộp bản nền ngay; nộp bản nâng cao nếu script ghi `TỐT HƠN`; giữ lại ít nhất 1 lượt cho cải tiến |
+| 3–4 | **không** nộp bản nền; chờ bản nâng cao rồi nộp một lần; còn lại để dành cho cải tiến |
+| 1–2 | chỉ nộp một lần vào cuối giờ, chọn file có điểm tự chấm cao nhất trong `nhat_ky_diem.txt` |
+
+Quy tắc chung:
+
+- **Chỉ nộp file mới khi điểm tự chấm cao hơn file đã nộp ít nhất 0,01.** Điểm tự chấm nhích ít hơn thế thường chỉ là may rủi, điểm thật có thể còn thấp hơn.
+- **Script tự ghi sổ** `KIT_BAI1\runs\chungket\nhat_ky_diem.txt`: mỗi file nộp đã tạo, giờ tạo và điểm tự chấm của nó. Mỗi lần nộp, em ghi thêm ra giấy **tên file đã nộp** và **điểm trên web**.
+- **Nếu điểm cuối tính bài nộp SAU CÙNG:** lượt cuối phải là file tốt nhất (điểm web cao nhất). Nếu lần nộp gần nhất ra điểm thấp hơn trước, nộp lại file tốt nhất (tìm theo tên trong sổ, ví dụ `predictions_1432.json`).
+
+**Khi có cải tiến** (đã sửa code theo AI rồi bấm `HOC_LAI.bat`): script chạy lại và in điểm tự chấm mới, đồng thời ghi thêm một dòng vào `nhat_ky_diem.txt`. So với dòng của file đã nộp: cao hơn ít nhất 0,01 thì nộp, không thì giữ nguyên, không nộp.
+
 **Cách nộp:** vào trang nộp bài của BTC → chọn file
 `C:\Users\Thanh Hue\Downloads\Phenikaa_Campus_Courier_2026\KIT_BAI1\runs\chungket\predictions.json`
-Hai lần nộp đều là file này (cùng tên, lần sau nội dung mới). Mỗi lần nộp xong ghi lại điểm ra giấy.
+File này luôn là bản script khuyên nộp (bản nâng cao nếu nó tốt hơn, không thì bản nền). Mỗi lần nộp xong ghi lại tên file và điểm ra giấy.
 
 **Thời gian** (đo trên dữ liệu vòng private):
 
