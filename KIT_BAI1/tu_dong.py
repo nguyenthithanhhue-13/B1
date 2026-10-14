@@ -34,7 +34,10 @@ HERE = Path(__file__).resolve().parent
 def tim_du_lieu(p):
     """Trả về thư mục chứa train/ validation/ test/. Nếu người dùng trỏ nhầm vào thư mục bên ngoài thì tự tìm xuống tối đa 3 cấp."""
     from pathlib import Path as _P
-    p = _P(str(p).strip().strip('"')).resolve()
+    p = _P(str(p).strip().strip('"').strip("'")).expanduser()
+    if not p.exists() and (_P.home() / p).exists():      # Jupyter 'Copy Path' cho đường dẫn tính từ thư mục nhà
+        p = _P.home() / p
+    p = p.resolve()
     ok = lambda d: all((d / s / "observations.json").exists() for s in ("train", "validation", "test"))
     if p.is_dir():
         if ok(p):
@@ -57,11 +60,11 @@ LOG.mkdir(parents=True, exist_ok=True)
 for sp in ("train", "validation", "test"):
     if not (DATA / sp / "observations.json").exists():
         sys.exit(f"Không thấy {DATA / sp / 'observations.json'}: kiểm tra lại đường dẫn dữ liệu.")
-if not (HERE / "outputs" / "e5_small" / "onnx" / "model.onnx").exists():
+if not (HERE / "outputs" / "e5_small" / "onnx" / "model.onnx").exists() or (HERE / "outputs" / "e5_small" / "onnx" / "model.onnx").stat().st_size < 10**8:
     sys.exit("Thiếu outputs/e5_small/onnx/model.onnx (470 MB). Có mạng thì chạy: python src/embed.py download")
 
 ENV = dict(os.environ, COURIER_DATA=str(DATA), COURIER_WORK=str(WORK), PYTHONUTF8="1", PYTHONIOENCODING="utf-8",
-           PYTHONWARNINGS="ignore", PROCS=os.environ.get("PROCS", str(max(1, (os.cpu_count() or 2) - 3))))
+           PYTHONWARNINGS="ignore", PROCS=os.environ.get("PROCS", str(max(1, min(8, (len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 2)) - 3)))))
 T0 = time.time()
 
 

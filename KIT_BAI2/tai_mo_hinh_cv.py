@@ -1,6 +1,7 @@
-"""Tải trước (KHI CÒN MẠNG) các mô hình ảnh mà bài 2 dùng, để lúc thi chạy offline.
-Chạy một lần:  python tai_mo_hinh_cv.py      (máy Huệ đã tải rồi; máy khác muốn dùng thì chạy lệnh này ở nhà)
-Cần cài trước:  pip install ultralytics easyocr
+"""Tải trước (KHI CÒN MẠNG) mọi mô hình mà bài 2 dùng: ảnh, YOLO, OCR, đọc câu, dịch.
+Chạy một lần:  python tai_mo_hinh_cv.py            (máy Huệ đã tải rồi; máy khác / JupyterHub thì chạy lệnh này)
+               python tai_mo_hinh_cv.py --nhanh    (bỏ mô hình dịch NLLB 2,4 GB và EasyOCR tiếng Trung)
+Cần cài trước:  pip install ultralytics easyocr transformers sentence-transformers sentencepiece sacremoses
 """
 import os
 import sys
@@ -16,6 +17,7 @@ for _st in (sys.stdout, sys.stderr):
 HERE = Path(__file__).resolve().parent
 W = HERE / "mo_hinh"
 W.mkdir(exist_ok=True)
+NHANH = "--nhanh" in sys.argv
 
 
 def step(name, fn):
@@ -58,11 +60,31 @@ def yolo():
 def ocr():
     import easyocr
     easyocr.Reader(["vi", "en"], gpu=False, verbose=False)
-    easyocr.Reader(["ch_sim", "en"], gpu=False, verbose=False)
+    if not NHANH:
+        easyocr.Reader(["ch_sim", "en"], gpu=False, verbose=False)
+
+
+TEXT = ["intfloat/multilingual-e5-small", "bkai-foundation-models/vietnamese-bi-encoder", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"]
+MT = ["Helsinki-NLP/opus-mt-zh-vi", "Helsinki-NLP/opus-mt-en-vi", "Helsinki-NLP/opus-mt-vi-en", "Helsinki-NLP/opus-mt-en-zh"]
+
+
+def text():
+    from transformers import AutoModel, AutoTokenizer
+    for m in TEXT:
+        AutoModel.from_pretrained(m), AutoTokenizer.from_pretrained(m)
+
+
+def mt():
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+    for m in MT + ([] if NHANH else ["facebook/nllb-200-distilled-600M"]):
+        AutoModelForSeq2SeqLM.from_pretrained(m), AutoTokenizer.from_pretrained(m)
+        print(f"      đã tải {m}", flush=True)
 
 
 step("torchvision: ResNet50, ResNet18, MobileNetV3, EfficientNet-B0", tv)
 step("CLIP + DINOv2", hf)
 step("YOLO11n (khoanh hộp) + YOLO11n-seg (tô vùng)", yolo)
-step("EasyOCR: Việt + Anh, Trung + Anh", ocr)
+step("EasyOCR: Việt + Anh" + ("" if NHANH else ", Trung + Anh"), ocr)
+step("mô hình đọc câu (e5, vietnamese-bi-encoder, MiniLM)", text)
+step("mô hình dịch (opus-mt" + ("" if NHANH else " + NLLB-200") + ")", mt)
 print("Xong.")

@@ -38,6 +38,11 @@ from bai2 import IMG_EXT, ask, ask_path, clean_path, pick_col, read_table, show_
 
 OUT = HERE / "ket_qua"
 W = HERE / "mo_hinh"
+def DEV():
+    import torch
+    return 0 if torch.cuda.is_available() else "cpu"
+
+
 WEIGHTS = {"hop": W / "yolo11n.pt", "vung": W / "yolo11n-seg.pt"}
 
 
@@ -104,11 +109,11 @@ def run(cfg):
     if cfg["viec"] in ("2", "4"):
         data = cfg.get("data_yaml") or csv_to_yolo(cfg, folder)
         print(f"\nĐANG HỌC (tối đa {cfg['phut']} phút, ảnh cỡ {cfg['co_anh']}). Mỗi vòng in một bảng; cột mAP50 càng cao càng tốt (tối đa 1).", flush=True)
-        model.train(data=data, epochs=int(cfg.get("so_vong", 100)), time=float(cfg["phut"]) / 60, imgsz=int(cfg["co_anh"]), device="cpu",
-                    batch=8, workers=0, project=str(folder), name="hoc", exist_ok=True, plots=False, verbose=False, patience=20, seed=0)
+        model.train(data=data, epochs=int(cfg.get("so_vong", 100)), time=float(cfg["phut"]) / 60, imgsz=int(cfg["co_anh"]), device=DEV(),
+                    batch=16 if DEV() == 0 else 8, workers=0, project=str(folder), name="hoc", exist_ok=True, plots=False, verbose=False, patience=20, seed=0)
         best = folder / "hoc" / "weights" / "best.pt"
         model = YOLO(str(best))
-        m = model.val(data=data, imgsz=int(cfg["co_anh"]), device="cpu", workers=0, plots=False, verbose=False, project=str(folder), name="cham", exist_ok=True)
+        m = model.val(data=data, imgsz=int(cfg["co_anh"]), device=DEV(), workers=0, plots=False, verbose=False, project=str(folder), name="cham", exist_ok=True)
         print(f"\n   TỰ CHẤM trên 15% ảnh giữ lại: mAP50 = {m.box.map50:.4f}   mAP50-95 = {m.box.map:.4f}" + (f"   (vùng: mAP50 = {m.seg.map50:.4f})" if seg else ""))
         print(f"   mô hình đã học: {best}")
     paths = images_in(cfg["test"])
@@ -116,7 +121,7 @@ def run(cfg):
     rows, counts = [], []
     (folder / "anh_ve_hop").mkdir(exist_ok=True)
     for i in range(0, len(paths), 16):
-        for r in model.predict(paths[i:i + 16], imgsz=int(cfg["co_anh"]), conf=float(cfg["nguong"]), device="cpu", verbose=False):
+        for r in model.predict(paths[i:i + 16], imgsz=int(cfg["co_anh"]), conf=float(cfg["nguong"]), device=DEV(), verbose=False):
             p = Path(r.path)
             h, w = r.orig_shape
             n = 0

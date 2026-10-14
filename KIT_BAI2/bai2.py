@@ -62,7 +62,10 @@ def say(*a):
 
 # ======================= đọc dữ liệu =======================
 def clean_path(s):
-    return Path(str(s).strip().strip('"').strip("'"))
+    p = Path(str(s).strip().strip('"').strip("'")).expanduser()
+    if not p.exists() and not p.is_absolute() and (Path.home() / p).exists():      # Jupyter 'Copy Path' tính từ thư mục nhà
+        p = Path.home() / p
+    return p
 
 
 def read_table(path):
@@ -466,8 +469,10 @@ def finetune_images(trp, y, tep, minutes=20, epochs=8):
     norm = T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     aug = T.Compose([T.RandomResizedCrop(224, scale=(0.6, 1.0)), T.RandomHorizontalFlip(), T.ColorJitter(0.2, 0.2, 0.2), T.ToTensor(), norm])
     plain = T.Compose([T.Resize(256), T.CenterCrop(224), T.ToTensor(), norm])
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
     net = M.mobilenet_v3_large(weights=M.MobileNet_V3_Large_Weights.DEFAULT)
     net.classifier[3] = torch.nn.Linear(net.classifier[3].in_features, len(classes))
+    net = net.to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=5e-4, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=epochs)
     lossf = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
@@ -477,11 +482,11 @@ def finetune_images(trp, y, tep, minutes=20, epochs=8):
         out = []
         with torch.no_grad():
             for i in range(0, len(paths), 64):
-                x = torch.stack([plain(get(p) if keep and p in mem else load(p)) for p in paths[i:i + 64]])
+                x = torch.stack([plain(get(p) if keep and p in mem else load(p)) for p in paths[i:i + 64]]).to(dev)
                 p = net(x).softmax(1)
                 if tta:      # lật ngang rồi lấy trung bình
                     p = (p + net(torch.flip(x, dims=[3])).softmax(1)) / 2
-                out.append(p.numpy())
+                out.append(p.cpu().numpy())
         return np.concatenate(out)
 
     t0, best, best_state = time.time(), -1.0, None
@@ -493,8 +498,8 @@ def finetune_images(trp, y, tep, minutes=20, epochs=8):
             b = order[i:i + 32]
             if len(b) < 2:
                 continue
-            x = torch.stack([aug(get(trp[j])) for j in b])
-            loss = lossf(net(x), torch.as_tensor(yi[b]))
+            x = torch.stack([aug(get(trp[j])) for j in b]).to(dev)
+            loss = lossf(net(x), torch.as_tensor(yi[b]).to(dev))
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -503,7 +508,7 @@ def finetune_images(trp, y, tep, minutes=20, epochs=8):
         el = (time.time() - t0) / 60
         say(f"   tinh chỉnh vòng {ep + 1}/{epochs}: accuracy phần giữ lại = {acc:.4f}   ({el:.1f} phút)")
         if acc > best:
-            best, best_state = acc, {k: v.clone() for k, v in net.state_dict().items()}
+            best, best_state = acc, {k: v.detach().clone() for k, v in net.state_dict().items()}
         if el / (ep + 1) * (ep + 2) > minutes:
             say(f"   dừng sớm cho kịp giờ (giới hạn {minutes} phút)")
             break
@@ -700,6 +705,8 @@ def run(cfg):
                 say(f">>> Tinh chỉnh KHÔNG hơn rõ ({b_score:.4f} -> {acc:.4f}). Giữ file nộp chính: {folder / 'submission.csv'}")
                 say(f"    Còn lượt nộp thì có thể thử bản trộn hai cách: {folder / 'tron_ca_hai' / 'submission.csv'}")
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             say(f"   tinh chỉnh lỗi, bỏ qua ({type(e).__name__}: {str(e)[:150]}). File nộp chính vẫn dùng được.")
     say(f"Xong sau {(time.time() - t0) / 60:.1f} phút. Cấu hình đã lưu: {folder / 'cau_hinh.json'}")
     (folder / "bao_cao.txt").write_text("\n".join(LOG), encoding="utf-8")

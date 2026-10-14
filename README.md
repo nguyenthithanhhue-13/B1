@@ -47,7 +47,22 @@ Máy Huệ đã cài sẵn mọi thứ, không cần làm bước này.
 
 ---
 
-## Ngày thi: bấm file nào
+## Nếu BTC bắt chạy trên JupyterHub (máy chủ qua trình duyệt)
+
+Xem **[JUPYTER/HUONG_DAN_JUPYTER.md](JUPYTER/HUONG_DAN_JUPYTER.md)**: không bấm `.bat`, mà dán lệnh vào Terminal của JupyterHub:
+
+```
+bash ~/B1/JUPYTER/cai_dat.sh                      # cài đặt, một lần
+bash ~/B1/JUPYTER/bai1.sh <thư mục dữ liệu>       # bài 1
+bash ~/B1/JUPYTER/hoc_lai.sh                      # học lại sau khi sửa code
+cd ~/B1/KIT_BAI2 && python bai2.py                # bài 2 (yolo_mau.py, ocr_mau.py)
+```
+
+Bộ đồ nghề mang lên bằng `kit.zip` (tạo ở nhà bằng `python JUPYTER/dong_goi.py`, nằm ở `Desktop\GOI_JUPYTER`).
+
+---
+
+## Ngày thi (chạy trên máy mình): bấm file nào
 
 Mọi file `.bat` đều **bấm đúp trong File Explorer** (không bấm trong VS Code: ở đó nó chỉ mở ra chữ, không chạy).
 
@@ -76,4 +91,5 @@ Cách tính điểm: mỗi bài lấy **lần nộp cao nhất**, điểm cuối
 |---|---|
 | `KIT_BAI1/` | bài 1: code (gốc là lời giải vòng private COURIER2 của MinnToet), mô hình đọc ảnh, công cụ chạy tự động, sổ tay, file Word hướng dẫn |
 | `KIT_BAI2/` | bài 2: khung chung cho 9 kiểu bài (`bai2.py`, `yolo_mau.py`, `ocr_mau.py`), sổ tay, file cài đặt cho máy khác. Mô hình YOLO nằm trong `KIT_BAI2/mo_hinh/`; các mô hình khác tải bằng `CAI_DAT_MAY_KHAC.bat` |
+| `JUPYTER/` | lệnh chạy trên JupyterHub, notebook, script đóng gói |
 | `du_lieu_tap_duot/` | 300 / 40 / 30 cảnh của dữ liệu vòng private, để tập bài 1 |
