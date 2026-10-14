@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sơ đồ bài 1 Campus Courier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Bố cục: một cột đọc từ trên xuống như bản đồ tuyến đường; nền giấy kẻ ô như lưới campus; mỗi khâu một màu tuyến */
+:root {
+  --paper: #f2f4f1;
+  --grid: #dfe4de;
+  --card: #ffffff;
+  --ink: #17232a;
+  --muted: #56646b;
+  --line: #c9d1cb;
+  --cv: #2f5fa8;      /* khâu đọc ảnh */
+  --nlp: #7a4bb0;     /* khâu đọc câu */
+  --st: #0d7a68;      /* khâu chiến thuật */
+  --go: #b4600a;      /* nộp bài / quyết định */
+  --cv-bg: #e6edf8;
+  --nlp-bg: #f0e8f8;
+  --st-bg: #e2f2ee;
+  --go-bg: #fbeedd;
+  --f-display: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Be Vietnam Pro", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12191c; --grid: #1b2428; --card: #182226; --ink: #e5ece8; --muted: #9aa8ad; --line: #2c3a3f;
+    --cv: #7fa6e6; --nlp: #b896e3; --st: #4fc2ad; --go: #f0a54f;
+    --cv-bg: #1a2a40; --nlp-bg: #2a1f3a; --st-bg: #133430; --go-bg: #3a2814;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12191c; --grid: #1b2428; --card: #182226; --ink: #e5ece8; --muted: #9aa8ad; --line: #2c3a3f;
+  --cv: #7fa6e6; --nlp: #b896e3; --st: #4fc2ad; --go: #f0a54f;
+  --cv-bg: #1a2a40; --nlp-bg: #2a1f3a; --st-bg: #133430; --go-bg: #3a2814;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background-color: var(--paper);
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 28px 28px;
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15.5px;
+  line-height: 1.6;
+}
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 18px; padding-block: 36px 72px; display: flex; flex-direction: column; gap: 44px; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(28px, 5vw, 42px); font-weight: 800; letter-spacing: -0.01em; }
+h2 { font-size: 22px; font-weight: 800; }
+h3 { font-size: 16px; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+code, .mono { font-family: var(--f-mono); font-size: 0.86em; }
+code { background: var(--grid); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 16px; }
+.lede { color: var(--muted); font-size: 16.5px; }
+header { display: flex; flex-direction: column; gap: 12px; }
+
+/* chú giải màu */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+
+/* sơ đồ tổng quan một cảnh */
+.flow { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+.box { border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; border: 1px solid transparent; }
+.box .k { font-family: var(--f-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.box p { font-size: 14px; }
+.in { background: var(--paper); border-color: var(--line); }
+.cv { background: var(--cv-bg); border-color: color-mix(in srgb, var(--cv) 35%, transparent); }
+.cv .k { color: var(--cv); }
+.nlp { background: var(--nlp-bg); border-color: color-mix(in srgb, var(--nlp) 35%, transparent); }
+.nlp .k { color: var(--nlp); }
+.st { background: var(--st-bg); border-color: color-mix(in srgb, var(--st) 35%, transparent); }
+.st .k { color: var(--st); }
+.go { background: var(--go-bg); border-color: color-mix(in srgb, var(--go) 45%, transparent); }
+.go .k { color: var(--go); }
+.span2 { grid-column: 1 / -1; }
+.arrow { grid-column: 1 / -1; text-align: center; color: var(--muted); font-family: var(--f-mono); font-size: 13px; line-height: 1; }
+.arrow.two { display: grid; grid-template-columns: 1fr 1fr; }
+.moves { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 4px; }
+.moves div { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font-size: 12.5px; text-align: center; }
+.moves b { display: block; font-family: var(--f-mono); font-size: 12px; color: var(--st); }
+
+/* dòng thời gian tu_dong.py: hai làn chạy song song */
+.timeline { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; overflow-x: auto; }
+.lanes { display: grid; grid-template-columns: 74px minmax(0, 1fr) minmax(0, 0.62fr); gap: 0 14px; min-width: 640px; }
+.lanes .hd { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding-bottom: 10px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.t { font-family: var(--f-mono); font-size: 12px; color: var(--muted); padding-top: 12px; font-variant-numeric: tabular-nums; }
+.step { position: relative; padding: 10px 12px 10px 16px; margin-bottom: 10px; border-radius: 8px; border-left: 4px solid var(--line); background: var(--paper); min-width: 0; }
+.step h3 { font-size: 14.5px; }
+.step p { font-size: 13.5px; color: var(--muted); }
+.step .files { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink); margin-top: 4px; overflow-wrap: anywhere; }
+.step.s-cv { border-left-color: var(--cv); }
+.step.s-nlp { border-left-color: var(--nlp); }
+.step.s-st { border-left-color: var(--st); }
+.step.s-go { border-left-color: var(--go); background: var(--go-bg); }
+.step.s-chk { border-left-color: var(--muted); }
+.bg-lane { grid-row: span 6; border: 2px dashed color-mix(in srgb, var(--cv) 55%, transparent); border-radius: 10px; padding: 12px; background: color-mix(in srgb, var(--cv-bg) 60%, transparent); display: flex; flex-direction: column; gap: 10px; align-self: stretch; margin-bottom: 10px; }
+.bg-lane h3 { color: var(--cv); font-size: 14.5px; }
+.bg-lane p { font-size: 13.5px; color: var(--muted); }
+.wait { font-family: var(--f-mono); font-size: 12px; color: var(--cv); }
+.empty { min-height: 1px; }
+
+/* nâng cao */
+.adv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.adv .box { background: var(--card); border: 1px solid var(--line); }
+.adv .box .k { color: var(--st); }
+.chooser { background: var(--st-bg); border: 1px solid color-mix(in srgb, var(--st) 40%, transparent); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+
+/* bảng */
+.tbl { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; font-family: var(--f-mono); font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.p-cv { color: var(--cv); } .p-nlp { color: var(--nlp); } .p-st { color: var(--st); } .p-go { color: var(--go); }
+
+/* cây thư mục */
+pre.tree { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; font-family: var(--f-mono); font-size: 13px; line-height: 1.65; overflow-x: auto; }
+pre.tree .c { color: var(--muted); }
+pre.tree .h { color: var(--go); font-weight: 500; }
+
+/* sửa lỗi */
+.loop { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; counter-reset: s; }
+.loop div { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 13.5px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.loop div::before { counter-increment: s; content: counter(s); font-family: var(--f-mono); font-size: 12px; color: var(--go); }
+.note { font-size: 13.5px; color: var(--muted); }
+
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+
+@media (max-width: 720px) {
+  .flow { grid-template-columns: 1fr; }
+  .arrow.two { grid-template-columns: 1fr; }
+  .arrow.two span:last-child { display: none; }
+  .adv { grid-template-columns: 1fr; }
+  .loop { grid-template-columns: 1fr 1fr; }
+  .moves { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+</style>
+</head><body>
+
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">Phenikaa AI Hackathon 2026 · chung kết · bài 1</div>
+  <h1>Sơ đồ bài 1 Campus Courier</h1>
+  <p class="lede">Bộ đồ nghề <code>KIT_BAI1</code> chạy từ thư mục dữ liệu BTC phát tới file nộp <code>predictions.json</code> như thế nào: mỗi cảnh đi qua ba khâu, script <code>tu_dong.py</code> sắp các bước theo thời gian, và phần nâng cao chọn mô hình cho từng robot.</p>
+  <div class="legend" aria-label="Chú giải màu">
+    <span><i class="sw" style="background:var(--cv)"></i>Đọc ảnh (CV)</span>
+    <span><i class="sw" style="background:var(--nlp)"></i>Đọc câu (NLP)</span>
+    <span><i class="sw" style="background:var(--st)"></i>Chiến thuật robot</span>
+    <span><i class="sw" style="background:var(--go)"></i>File nộp / quyết định</span>
+  </div>
+</header>
+
+<section>
+  <div class="eyebrow">Phần 1</div>
+  <h2>Một cảnh đi qua ba khâu</h2>
+  <p>Mỗi dòng của <code>test/observations.json</code> gồm một ảnh bản đồ, một câu tiếng Việt giao nhiệm vụ và số hiệu robot. Đáp án là bước đi đầu tiên: <span class="mono">0 = UP, 1 = DOWN, 2 = LEFT, 3 = RIGHT</span>. Train và validation có kèm bản đồ ghi sẵn bằng chữ (<code>scenes.json</code>); test chỉ có ảnh, nên phải đọc ảnh.</p>
+
+  <div class="flow" role="img" aria-label="Sơ đồ: ảnh và câu đi qua khâu đọc ảnh, đọc câu, rồi khâu chiến thuật chọn một trong bốn hướng">
+    <div class="box in">
+      <div class="k">Đầu vào 1 · ảnh</div>
+      <p>Ảnh bản đồ campus 1152×864, bốn kiểu vẽ: <span class="mono">classic, night, print, sketch</span>. Có thể bị xoay.</p>
+    </div>
+    <div class="box in">
+      <div class="k">Đầu vào 2 · câu + robot</div>
+      <p>Ví dụ: <em>“Huỷ đơn giao nhà xe. Thay vào đó… nhớ ghé lớp học lấy tập bài kiểm tra.”</em> Có câu không dấu, câu đính chính, câu lan man.</p>
+    </div>
+    <div class="arrow two"><span>↓</span><span>↓</span></div>
+    <div class="box cv">
+      <div class="k">Khâu 1 · đọc ảnh</div>
+      <p><code>src/run_cv.py</code> → <code>src/cv_infer.py</code>: bộ dò quét ảnh, khớp lưới (kể cả ảnh xoay), đọc chú giải màu của từng ảnh.</p>
+      <p>Mạng MLP (<code>.npz</code>) và CNN (<code>node_cnn</code>, <code>edge_cnn</code>, <code>swatch_cnn</code>, file <code>.onnx</code>) phân loại từng giao lộ và đoạn đường.</p>
+      <p><b>Ra:</b> đồ thị lưới gồm đoạn đường (thường / đông / có mái / đóng), bậc thang, một chiều, địa điểm, vị trí và hướng mũi của robot, thời tiết.</p>
+    </div>
+    <div class="box nlp">
+      <div class="k">Khâu 2 · đọc câu</div>
+      <p><code>src/nlp3.py</code> (bộ phân tích câu, học lại trên dữ liệu mới) + mô hình nhúng câu <code>multilingual-e5-small</code> (<code>outputs/e5_small</code>, chạy bằng onnx).</p>
+      <p>Hiểu được đính chính (“huỷ…, thay vào đó…”), câu không dấu, địa điểm tả qua bản đồ (“phía bắc”, “gần nhất”).</p>
+      <p><b>Ra:</b> đích, điểm ghé (via), cờ gấp / dễ vỡ và các cờ mới nếu đề thêm.</p>
+    </div>
+    <div class="arrow">↓ ghép bản đồ + nhiệm vụ ↓</div>
+    <div class="box st span2">
+      <div class="k">Khâu 3 · chiến thuật</div>
+      <p>Với mỗi hướng đi có thể từ chỗ robot đứng, <code>src/strat_ml.py</code> (<code>move_feats</code>) và <code>nen.py</code> (<code>scene_feats</code>) tính đặc trưng: đi hướng đó thì đường còn lại dài bao nhiêu, qua bao nhiêu đoạn đông / có mái / bậc thang, có gần đích hay điểm ghé không, trời đêm hay mưa…</p>
+      <div class="moves" aria-hidden="true">
+        <div><b>UP</b>đặc trưng</div>
+        <div><b>DOWN</b>đặc trưng</div>
+        <div><b>LEFT</b>đặc trưng</div>
+        <div><b>RIGHT</b>đặc trưng</div>
+      </div>
+      <p>Mỗi robot có thói quen riêng mà đề chỉ gợi ý mơ hồ trong <code>robots.json</code> (vd “chỉ muốn tới nơi bằng ít đoạn đường nhất”). Vì vậy <b>mỗi robot một mô hình riêng</b> học từ train: bản nền dùng HistGradientBoosting, bản nâng cao thử thêm vài cách (Phần 3). Mô hình chấm điểm bốn hướng và chọn hướng điểm cao nhất; hướng bị tường chặn bị loại.</p>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="box go span2">
+      <div class="k">Đầu ra</div>
+      <p>Một số 0–3 cho mỗi dòng test, theo đúng thứ tự <code>test/observations.json</code>, ghi thành danh sách JSON: <code>runs/chungket/predictions.json</code>.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 2</div>
+  <h2>Thứ tự chạy của <code>tu_dong.py</code></h2>
+  <p>Bấm <code>CHAY_BAI1.bat</code> (máy Windows) hoặc <code>bash JUPYTER/bai1.sh</code> (JupyterHub) đều gọi <code>python tu_dong.py &lt;dữ liệu&gt; chungket</code>. Việc đọc ảnh chạy nền ở làn phải trong lúc làn giữa học trên train. Thời gian đo trên máy 8 nhân với dữ liệu vòng private; bước nào đã xong thì lần chạy sau bỏ qua.</p>
+
+  <div class="timeline">
+    <div class="lanes">
+      <div class="hd">phút</div>
+      <div class="hd">làn chính</div>
+      <div class="hd">làn nền</div>
+
+      <div class="t">0</div>
+      <div class="step s-chk">
+        <h3>0 · soi đề mới</h3>
+        <p>So cấu trúc dữ liệu với vòng private. Dòng <b>KHÁC</b> cho biết BTC nâng cấp ở đâu.</p>
+        <div class="files">kiem_tra_de.py</div>
+      </div>
+      <div class="bg-lane">
+        <h3>1 · đọc ảnh validation, rồi test</h3>
+        <p>Chạy song song nhiều tiến trình (biến <code>PROCS</code>, tối đa 8 trên JupyterHub).</p>
+        <p>validation ~4–7 phút<br>test ~16 phút trở lên (1.200 ảnh, chưa đo trên đề mới)</p>
+        <div class="files mono">src/run_cv.py → cache/world_*.pkl, det_*.pkl</div>
+        <div class="wait">→ kết quả được giữ lại khi HỌC LẠI</div>
+      </div>
+
+      <div class="t">0</div>
+      <div class="step s-chk">
+        <h3>0b · soi dữ liệu đầu vào</h3>
+        <p>Tìm ảnh hỏng, câu rỗng; so đặc trưng train / validation / test. Dòng <b>LỆCH</b> = test khác validation, nên điểm web sẽ thấp hơn điểm tự chấm.</p>
+        <div class="files">soi_du_lieu.py</div>
+      </div>
+
+      <div class="t">1</div>
+      <div class="step s-nlp">
+        <h3>2a · kho câu gấp, dễ vỡ</h3>
+        <div class="files">train/sent_inventory.py</div>
+      </div>
+
+      <div class="t">2–6</div>
+      <div class="step s-st">
+        <h3>2b, 2c · học bộ đọc câu + mô hình chiến thuật</h3>
+        <p>2b học chỉ trên train (để tự chấm trên validation). 2c học trên train + validation (để nộp).</p>
+        <div class="files">nen.py fit trainonly · nen.py fit final</div>
+      </div>
+
+      <div class="t">~8</div>
+      <div class="step s-chk">
+        <h3>3 · bảng CHẨN ĐOÁN</h3>
+        <p>Chờ đọc ảnh validation xong rồi chấm từng khâu (Phần 4).</p>
+        <div class="files">nen.py chandoan → outputs/chan_doan.json</div>
+      </div>
+
+      <div class="t">30–40</div>
+      <div class="step s-go">
+        <h3>4 · FILE NỘP bản nền → nộp ngay</h3>
+        <p>Chờ đọc ảnh test xong, đoán toàn bộ test. In điểm tự chấm, ghi một dòng vào sổ điểm.</p>
+        <div class="files">nen.py test → predictions.json, predictions_ban_nen.json, nhat_ky_diem.txt</div>
+      </div>
+
+      <div class="t">+20–45</div>
+      <div class="step s-st">
+        <h3>5 · nâng cao</h3>
+        <p>Học mô hình mạnh hơn cho từng robot (Phần 3). Chỉ chạy khi có đúng 10 robot 0–9 và có torch; lỗi thì bỏ qua, bản nền vẫn còn.</p>
+        <div class="files">nang_cao.py → outputs/chon.json</div>
+      </div>
+      <div class="empty"></div>
+
+      <div class="t"></div>
+      <div class="step s-chk">
+        <h3>6 · chẩn đoán lại</h3>
+        <div class="files">nen.py chandoan</div>
+      </div>
+      <div class="empty"></div>
+
+      <div class="t">~65–90</div>
+      <div class="step s-go">
+        <h3>7 · FILE NỘP bản nâng cao, tự so với bản nền</h3>
+        <p>Điểm tự chấm hơn bản nền ít nhất 0,003 thì in <b>TỐT HƠN → NỘP</b>. Không hơn thì in <b>TRẢ VỀ BẢN NỀN</b> và chép bản nền đè lại vào <code>predictions.json</code>; đã nộp bản nền thì khỏi nộp nữa.</p>
+        <div class="files">predictions.json, predictions_nang_cao.json, predictions_HHMM.json</div>
+      </div>
+      <div class="empty"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 3</div>
+  <h2>Bên trong bước nâng cao</h2>
+  <p><code>nang_cao.py</code> thử thêm ba loại mô hình cho từng robot, rồi giữ cho mỗi robot cái nào đúng nhất trên validation. Robot nào mô hình mới không hơn thì giữ mô hình nền.</p>
+  <div class="adv">
+    <div class="box">
+      <div class="k">a · liệt kê đường tốt</div>
+      <p><code>train/pareto.py</code>: với mỗi cảnh, liệt kê các đường đi “không thua kém nhau” (Pareto) theo độ dài, số đoạn đông, có mái, bậc thang… ~2–3 phút.</p>
+    </div>
+    <div class="box">
+      <div class="k">b · siêu tuyến tính</div>
+      <p><code>train/hyper_train.py</code> (cần torch): mỗi robot học trọng số chấm điểm các đường. Hai biến thể <span class="mono">full</span> và <span class="mono">goal</span>, mỗi biến thể 2 hạt giống, cộng thêm bản trung bình của hai. ~20 phút.</p>
+    </div>
+    <div class="box">
+      <div class="k">c · luật tham lam</div>
+      <p><code>train/greedy_rules.py</code>: cho robot 9 (“chỉ nhìn một bước”), dò luật chọn bước kế tiếp tốt nhất. Vài giây.</p>
+    </div>
+  </div>
+  <div class="chooser"><b>Chọn:</b> <code>nen.py chon</code> chấm mọi ứng viên của từng robot trên validation (nền HGB, siêu tuyến tính full, goal, trung bình, tham lam) và ghi lựa chọn vào <code>outputs/chon.json</code>. Bước 7 dùng file này để đoán test.</div>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 4</div>
+  <h2>Đọc bảng CHẨN ĐOÁN và điểm số</h2>
+  <p>Bảng chấm cùng một tập validation theo bốn cách, để biết điểm mất ở khâu nào. Dòng (4) là điểm thật; so (4) với (2) và (3) để thấy khâu đọc ảnh hay khâu đọc câu làm rơi điểm.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>dòng</th><th>bản đồ dùng</th><th>câu dùng</th><th>cho biết</th></tr></thead>
+      <tbody>
+        <tr><td class="num">(1)</td><td>đúng (scenes.json)</td><td>đúng (nhãn)</td><td>trần của <span class="pill p-st">chiến thuật</span>: nếu đọc ảnh và câu không sai gì</td></tr>
+        <tr><td class="num">(2)</td><td>đúng</td><td>máy đọc</td><td>(1) − (2) = điểm mất do <span class="pill p-nlp">đọc câu</span></td></tr>
+        <tr><td class="num">(3)</td><td>máy đọc</td><td>đúng</td><td>(1) − (3) = điểm mất do <span class="pill p-cv">đọc ảnh</span></td></tr>
+        <tr><td class="num">(4)</td><td>máy đọc</td><td>máy đọc</td><td><span class="pill p-go">điểm thật</span>, gần với điểm web nhất</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>đã đo trên dữ liệu vòng private</th><th>điểm tự chấm (validation, macro accuracy)</th></tr></thead>
+      <tbody>
+        <tr><td>baseline <code>starter.py</code> của BTC (hướng hay gặp nhất của mỗi robot)</td><td class="num">≈ 0,25</td></tr>
+        <tr><td>chỉ đọc câu, không đọc ảnh (TF-IDF, mỗi robot một mô hình)</td><td class="num">0,26</td></tr>
+        <tr><td>bản nền (bước 4)</td><td class="num">0,79</td></tr>
+        <tr><td>bản nâng cao (bước 7)</td><td class="num">0,90</td></tr>
+        <tr><td>bản làm tay của MinnToet ở vòng loại · điểm web</td><td class="num">0,93 · 0,83</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Điểm web thường thấp hơn điểm tự chấm khoảng 7–10 điểm vì test khác validation (vòng private: câu test dài hơn, 41% không dấu so với 34%). Hai dòng đầu cho thấy gần như toàn bộ điểm nằm ở việc đọc được bản đồ từ ảnh.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 5</div>
+  <h2>Kết quả nằm ở đâu</h2>
+  <pre class="tree">KIT_BAI1/runs/
+├── du_lieu_chungket.txt      <span class="c"># đường dẫn dữ liệu, để HOC_LAI dùng lại</span>
+├── man_hinh_chungket.txt     <span class="c"># (JupyterHub) mọi chữ hiện trên màn hình</span>
+└── chungket/
+    ├── <span class="h">predictions.json</span>          <span class="c"># FILE NỘP: luôn là bản script khuyên nộp</span>
+    ├── predictions_ban_nen.json
+    ├── predictions_nang_cao.json
+    ├── predictions_1432.json     <span class="c"># mỗi lần ra file nộp lưu thêm một bản có giờ</span>
+    ├── nhat_ky_diem.txt          <span class="c"># giờ tạo · bản nền/nâng cao · điểm tự chấm · tên file</span>
+    ├── log/                      <span class="c"># log từng bước; lỗi thì đọc dòng cuối</span>
+    ├── cache/                    <span class="c"># kết quả đọc ảnh (world_*, det_*), đặc trưng</span>
+    └── outputs/                  <span class="c"># mô hình đã học, chan_doan.json, chon.json</span></pre>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 6</div>
+  <h2>Khi đề có chỗ mới: sửa rồi học lại</h2>
+  <div class="loop">
+    <div><b>Thấy vấn đề</b>Dòng KHÁC lạ, <code>!!! BƯỚC LỖI</code>, hoặc dòng nào đó trong bảng chẩn đoán thấp.</div>
+    <div><b>Hỏi AI của BTC</b>Dán 20 dòng cuối của log + đúng hàm liên quan (mẫu A, B, C trong sổ tay).</div>
+    <div><b>Sao lưu, dán hàm mới</b>Copy file trước khi sửa; dán đè đúng hàm; lưu.</div>
+    <div><b>Học lại</b><code>HOC_LAI.bat</code> hoặc <code>bash JUPYTER/hoc_lai.sh</code>: xoá phần đã học, giữ kết quả đọc ảnh, chạy lại từ bước 2.</div>
+    <div><b>So sổ điểm</b>Dòng mới trong <code>nhat_ky_diem.txt</code> cao hơn file đã nộp ít nhất 0,01 thì nộp.</div>
+  </div>
+  <p class="note">Các hàm hay phải sửa khi đề đổi định dạng: <code>true_legs</code>, <code>norm_for_parser</code>, <code>scene_feats</code> trong <code>nen.py</code>; <code>move_feats</code> trong <code>src/strat_ml.py</code>. Đề đổi kiểu vẽ bản đồ hay thêm loại địa điểm thì khâu đọc ảnh (<code>src/cv_infer.py</code>) có thể sai, và đó là phần khó sửa nhất.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Phần 7</div>
+  <h2>Hai nơi chạy, cùng một bộ code</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>việc</th><th>máy Windows của đội</th><th>JupyterHub (Terminal)</th></tr></thead>
+      <tbody>
+        <tr><td>đưa code lên</td><td>đã có sẵn</td><td><code>git clone</code> repo B1, hoặc upload <code>kit.zip</code> rồi giải nén</td></tr>
+        <tr><td>cài đặt</td><td>đã cài trong <code>.venv</code></td><td><code>bash ~/B1/JUPYTER/cai_dat.sh</code> (tự tải lại model 470 MB nếu thiếu)</td></tr>
+        <tr><td>chạy bài 1</td><td>bấm đúp <code>CHAY_BAI1.bat</code>, kéo thả thư mục</td><td><code>bash ~/B1/JUPYTER/bai1.sh &lt;Copy Path&gt;</code></td></tr>
+        <tr><td>học lại</td><td><code>HOC_LAI.bat</code></td><td><code>bash ~/B1/JUPYTER/hoc_lai.sh</code></td></tr>
+        <tr><td>lấy file nộp</td><td>mở thẳng thư mục <code>runs\chungket</code></td><td>chuột phải <code>predictions.json</code> → Download</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<footer>Nguồn: code trong <code>KIT_BAI1</code> (gốc là lời giải vòng private COURIER2 của MinnToet, thêm phần chạy tự động) và số đo trên dữ liệu vòng private. Hướng dẫn từng bước: <code>HUONG_DAN_THI.docx</code>.</footer>
+
+</div>
+</body></html>
