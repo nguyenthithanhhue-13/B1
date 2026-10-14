@@ -145,6 +145,21 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
   .loop { grid-template-columns: 1fr 1fr; }
   .moves { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+@page { size: A4; margin: 12mm 10mm; }
+@media print {
+  body { font-size: 13.5px; background-image: none; }
+  .wrap { padding-block: 0; gap: 28px; max-width: none; }
+  .box, .step, .bg-lane, .adv .box, .chooser, .loop div, tr, pre.tree, .tbl { break-inside: avoid; }
+  h2, .eyebrow { break-after: avoid; }
+  .flow { break-inside: auto; }
+  .timeline { overflow: visible; }
+  pre.tree { white-space: pre-wrap; overflow: visible; font-size: 11.5px; }
+  .tbl { overflow: visible; }
+  .loop { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #p2 { break-before: page; }
+  footer { break-before: avoid; }
+}
 </style>
 </head><body>
 
@@ -209,7 +224,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
   </div>
 </section>
 
-<section>
+<section id="p2">
   <div class="eyebrow">Phần 2</div>
   <h2>Thứ tự chạy của <code>tu_dong.py</code></h2>
   <p>Bấm <code>CHAY_BAI1.bat</code> (máy Windows) hoặc <code>bash JUPYTER/bai1.sh</code> (JupyterHub) đều gọi <code>python tu_dong.py &lt;dữ liệu&gt; chungket</code>. Việc đọc ảnh chạy nền ở làn phải trong lúc làn giữa học trên train. Thời gian đo trên máy 8 nhân với dữ liệu vòng private; bước nào đã xong thì lần chạy sau bỏ qua.</p>
@@ -315,7 +330,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
   <div class="chooser"><b>Chọn:</b> <code>nen.py chon</code> chấm mọi ứng viên của từng robot trên validation (nền HGB, siêu tuyến tính full, goal, trung bình, tham lam) và ghi lựa chọn vào <code>outputs/chon.json</code>. Bước 7 dùng file này để đoán test.</div>
 </section>
 
-<section>
+<section id="p4">
   <div class="eyebrow">Phần 4</div>
   <h2>Đọc bảng CHẨN ĐOÁN và điểm số</h2>
   <p>Bảng chấm cùng một tập validation theo bốn cách, để biết điểm mất ở khâu nào. Dòng (4) là điểm thật; so (4) với (2) và (3) để thấy khâu đọc ảnh hay khâu đọc câu làm rơi điểm.</p>
@@ -362,7 +377,7 @@ footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--line)
     └── outputs/                  <span class="c"># mô hình đã học, chan_doan.json, chon.json</span></pre>
 </section>
 
-<section>
+<section id="p6">
   <div class="eyebrow">Phần 6</div>
   <h2>Khi đề có chỗ mới: sửa rồi học lại</h2>
   <div class="loop">
