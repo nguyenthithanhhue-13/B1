@@ -31,4 +31,5 @@ Các file `.bat` ưu tiên Python ở `C:\Users\Thanh Hue\.venv\Scripts\python.e
 | thư mục | nội dung |
 |---|---|
 | `KIT_BAI1/` | code (gốc: lời giải vòng private COURIER2 của MinnToet), mô hình đọc ảnh, công cụ chạy tự động, sổ tay |
+| `KIT_BAI2/` | khung chung cho bài 2 (bảng, văn bản, ảnh, âm thanh, chia nhóm): bấm đúp `CHAY_BAI2.bat`; hướng dẫn ở `KIT_BAI2/SO_TAY_BAI2.md`. Các mô hình có sẵn (ResNet, CLIP, mô hình nhúng câu) KHÔNG nằm trong repo: chúng ở bộ nhớ đệm của máy Huệ, máy khác phải tự tải khi còn mạng |
 | `du_lieu_tap_duot/` | 300 / 40 / 30 cảnh của dữ liệu vòng private, để tập |
