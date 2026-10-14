@@ -330,10 +330,11 @@ def khop_anh_chu(img_vec, txt_vec, top=5):
 
 # ======================= tinh chỉnh (finetune) trên GPU =======================
 def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_dau=1e-3, batch=32, max_len=128,
-               val=0.15, phut=40, dong_bang_anh=False, dong_bang_chu=False, seed=0):
-    """Tinh chỉnh mô hình ẢNH + CHỮ (hoặc chỉ một trong hai) cho bài PHÂN LOẠI, chạy GPU (fp16), dừng khi hết `phut` phút.
-    anh / chu: tên ngắn (xem IMG_MODELS, TXT_MODELS) hoặc None để bỏ phần đó.
-    Trả về (điểm accuracy trên phần giữ lại, xác suất test [n_test x n_lớp], các lớp, đường dẫn mô hình đã lưu)."""
+               val=0.15, phut=40, dong_bang_anh=False, dong_bang_chu=False, seed=0, task=None):
+    """Tinh chỉnh mô hình ẢNH + CHỮ (hoặc chỉ một trong hai), chạy GPU (fp16), dừng khi hết `phut` phút.
+    Bài PHÂN LOẠI: trả về (accuracy phần giữ lại, xác suất test [n_test x n_lớp], các lớp, đường dẫn mô hình).
+    Bài ĐOÁN SỐ (task="hoiquy", tự nhận nếu nhãn là số nhiều giá trị): trả về (-RMSE phần giữ lại, dự đoán test [n_test], None, đường dẫn).
+    anh / chu: tên ngắn (xem IMG_MODELS, TXT_MODELS) hoặc None để bỏ phần đó."""
     import torch
     import torch.nn as nn
     from PIL import Image
@@ -344,9 +345,16 @@ def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_da
     use_img = bool(anh) and (train_df["image"] != "").any()
     use_txt = bool(chu) and (train_df["text"] != "").any()
     assert use_img or use_txt, "cần ít nhất ảnh hoặc chữ"
-    classes, yi = np.unique(train_df["label"].astype(str), return_inverse=True)
+    task = task or bai2.guess_task(train_df["label"].to_numpy())
+    reg = task != "phanloai"
+    if reg:
+        yv = train_df["label"].astype(float).to_numpy()
+        mu, sd = float(yv.mean()), float(yv.std() + 1e-9)
+        yi, classes, strat = ((yv - mu) / sd).astype(np.float32), None, None
+    else:
+        classes, yi = np.unique(train_df["label"].astype(str), return_inverse=True)
+        strat = yi if pd.Series(yi).value_counts().min() >= 2 else None
     idx = np.arange(len(yi))
-    strat = yi if pd.Series(yi).value_counts().min() >= 2 else None
     tr_i, va_i = train_test_split(idx, test_size=val, random_state=seed, stratify=strat)
 
     class Net(nn.Module):
@@ -367,7 +375,7 @@ def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_da
                 if dong_bang_chu:
                     for p in self.txt.parameters():
                         p.requires_grad = False
-            self.head = nn.Sequential(nn.LayerNorm(d), nn.Dropout(0.2), nn.Linear(d, 512), nn.GELU(), nn.Dropout(0.1), nn.Linear(512, len(classes)))
+            self.head = nn.Sequential(nn.LayerNorm(d), nn.Dropout(0.2), nn.Linear(d, 512), nn.GELU(), nn.Dropout(0.1), nn.Linear(512, 1 if reg else len(classes)))
 
         def forward(self, pix=None, ids=None, att=None):
             z = []
@@ -412,14 +420,15 @@ def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_da
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[lr, lr_dau], total_steps=steps + 1, pct_start=0.1)
     use_amp = dev == "cuda"
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
-    lossf = nn.CrossEntropyLoss(label_smoothing=0.1)
+    lossf = nn.MSELoss() if reg else nn.CrossEntropyLoss(label_smoothing=0.1)
 
     def predict(df, rows):
         net.eval()
         out = []
         with torch.no_grad(), torch.autocast(dev, dtype=torch.float16, enabled=use_amp):
             for i in range(0, len(rows), batch * 2):
-                out.append(net(**batch_of(df, rows[i:i + batch * 2], False)).float().softmax(1).cpu().numpy())
+                o = net(**batch_of(df, rows[i:i + batch * 2], False)).float()
+                out.append((o[:, 0] * sd + mu).cpu().numpy() if reg else o.softmax(1).cpu().numpy())
         return np.concatenate(out)
 
     t0, best, best_state, rng = time.time(), -1.0, None, np.random.default_rng(seed)
@@ -429,7 +438,8 @@ def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_da
         for i in range(0, len(order) - 1, batch):
             rows = order[i:i + batch]
             with torch.autocast(dev, dtype=torch.float16, enabled=use_amp):
-                loss = lossf(net(**batch_of(train_df, rows, True)), torch.as_tensor(yi[rows], device=dev))
+                o = net(**batch_of(train_df, rows, True))
+                loss = lossf(o[:, 0].float(), torch.as_tensor(yi[rows], device=dev)) if reg else lossf(o, torch.as_tensor(yi[rows], device=dev))
             opt.zero_grad()
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
@@ -439,18 +449,20 @@ def tinh_chinh(train_df, test_df, anh="clip", chu="e5", epochs=5, lr=3e-5, lr_da
             sched.step()
             if (time.time() - t0) / 60 > phut:
                 break
-        acc = float((predict(train_df, va_i).argmax(1) == yi[va_i]).mean())
-        print(f"vòng {ep + 1}/{epochs}: accuracy phần giữ lại = {acc:.4f}  loss cuối = {loss.item():.3f}  ({(time.time() - t0) / 60:.1f} phút)", flush=True)
-        if acc > best:
+        pv = predict(train_df, va_i)
+        acc = -float(np.sqrt(np.mean((pv - (yi[va_i] * sd + mu)) ** 2))) if reg else float((pv.argmax(1) == yi[va_i]).mean())
+        ten_diem = "-RMSE" if reg else "accuracy"
+        print(f"vòng {ep + 1}/{epochs}: {ten_diem} phần giữ lại = {acc:.4f}  loss cuối = {loss.item():.3f}  ({(time.time() - t0) / 60:.1f} phút)", flush=True)
+        if best_state is None or acc > best:
             best, best_state = acc, {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}
         if (time.time() - t0) / 60 > phut:
             print(f"dừng: hết {phut} phút")
             break
     net.load_state_dict(best_state)
     save = WORK / f"tinh_chinh_{anh}_{chu}.pt"
-    torch.save({"state": best_state, "classes": classes.tolist(), "anh": anh, "chu": chu}, save)
+    torch.save({"state": best_state, "classes": None if reg else classes.tolist(), "anh": anh, "chu": chu}, save)
     tp = predict(test_df, np.arange(len(test_df)))
-    print(f"TỐT NHẤT: accuracy phần giữ lại = {best:.4f}. Đã lưu {save}")
+    print(f"TỐT NHẤT: {'-RMSE' if reg else 'accuracy'} phần giữ lại = {best:.4f}. Đã lưu {save}")
     return best, tp, classes, save
 
 
@@ -505,3 +517,234 @@ def ghep_xac_suat(ten_va_trong_so):
 def ghi_nop(ids, du_doan, xac_suat=None, file_mau=None, cot_id="id", cot_nhan="label", ten="nop"):
     """Ghi file nộp theo đúng file mẫu của đề (nếu có). Ra work_b2/<ten>/submission.csv."""
     return bai2.write_submission(WORK / ten, list(ids), list(du_doan), xac_suat, cot_id, cot_nhan, file_mau)
+
+
+# ======================= CHẠY TỰ ĐỘNG (notebook CHAY_TU_DONG) =======================
+def doan_cot(tr, te, mau=None, thu_muc_anh=None):
+    """Đoán cột id / ảnh / chữ / nhãn từ bảng train, test và file nộp mẫu. Trả về dict, in ra để kiểm tra."""
+    sc = list(mau.columns) if mau is not None else []
+    cid = next((c for c in sc if c in te.columns), None)
+    if cid is None:
+        cid = next((c for c in te.columns if str(c).lower() in ("id", "idx", "index", "image_id", "sample_id", "qid", "ma") or str(c).lower().endswith("_id")), None)
+    cnhan = next((c for c in sc if c != cid and c in tr.columns and c not in te.columns), None)
+    if cnhan is None:
+        cnhan = next((c for c in tr.columns if c not in te.columns and c != cid), tr.columns[-1])
+    root = bai2.clean_path(thu_muc_anh) if thu_muc_anh else None
+    exts = tuple(bai2.IMG_EXT)
+
+    def la_anh(c):
+        v = te[c].dropna().astype(str).head(30) if c in te.columns else tr[c].dropna().astype(str).head(30)
+        if len(v) == 0:
+            return False
+        if v.str.lower().str.endswith(exts).mean() > 0.5:
+            return True
+        if root is not None:
+            ok = sum((root / x).exists() or any((root / (x + e)).exists() for e in exts) for x in v.head(10))
+            return ok >= 5
+        return False
+    cand = [c for c in tr.columns if c not in (cid, cnhan) and (tr[c].dtype == object or pd.api.types.is_string_dtype(tr[c]))]
+    canh = next((c for c in cand if la_anh(c)), None)
+    L = {c: tr[c].astype(str).str.len().mean() for c in cand}
+    cchu = [c for c in cand if c != canh and (L[c] >= 15 or (L[c] >= 8 and tr[c].nunique() > 0.05 * len(tr)))]
+    out = {"cot_id": cid, "cot_anh": canh, "cot_chu": cchu, "cot_nhan": cnhan}
+    print("MÁY ĐOÁN CÁC CỘT:", out)
+    return out
+
+
+def kiem_tra_du_lieu(df, sua=True):
+    """Kiểm tra bảng chuẩn: thiếu nhãn, ảnh thiếu / hỏng, ảnh trùng (nhãn mâu thuẫn, trùng giữa train và test), chữ rỗng,
+    test khác train. sua=True: bỏ dòng TRAIN thiếu nhãn / ảnh hỏng. Trả về bảng đã sửa."""
+    from PIL import Image
+    print("========== KIỂM TRA DỮ LIỆU ==========")
+    tr = df.split == "train"
+    bad = pd.Series(False, index=df.index)
+    nl = tr & df["label"].isna()
+    print(f"train thiếu nhãn: {nl.sum()}")
+    bad |= nl
+    if (df["image"] != "").any():
+        hong, md5 = [], {}
+        for i, p in df["image"].items():
+            if not p:
+                continue
+            try:
+                with open(p, "rb") as f:
+                    b = f.read()
+                md5[i] = hashlib.md5(b).hexdigest()
+                with Image.open(p) as im:
+                    im.verify()
+            except Exception:
+                hong.append(i)
+        print(f"ảnh thiếu / hỏng: {len(hong)}" + (f"  (vd {df.loc[hong[0], 'image']})" if hong else ""))
+        bad |= df.index.isin(hong) & tr
+        h = pd.Series(md5, dtype=object)
+        dup = h[h.duplicated(keep=False)]
+        trh = h[h.index.isin(df.index[tr])]
+        conflict = df.loc[trh.index].assign(h=trh).groupby("h")["label"].nunique()
+        print(f"ảnh trùng nhau: {dup.size} ảnh; nhóm ảnh trùng trong train mà NHÃN KHÁC NHAU: {(conflict > 1).sum()}")
+        te_h = h[h.index.isin(df.index[~tr])]
+        leak = te_h[te_h.isin(set(trh))]
+        if len(leak):
+            print(f"!!! {len(leak)} ảnh test TRÙNG HỆT ảnh train (xem work_b2/trung_train_test.csv)")
+            m = df.loc[trh.index].assign(h=trh).drop_duplicates("h").set_index("h")["label"]
+            pd.DataFrame({"id": df.loc[leak.index, "id"], "nhan_train": leak.map(m)}).to_csv(WORK / "trung_train_test.csv", index=False)
+    if (df["text"] != "").any():
+        rong = (df["text"].str.strip() == "")
+        print(f"chữ rỗng: train {(rong & tr).sum()}, test {(rong & ~tr).sum()}")
+        lt, le = df.loc[tr, "text"].str.len().mean(), df.loc[~tr, "text"].str.len().mean()
+        print(f"độ dài chữ trung bình: train {lt:.0f}, test {le:.0f}" + ("   LỆCH" if abs(lt - le) > 0.2 * max(lt, 1) else ""))
+        tdup = df[tr & ~rong].groupby("text")["label"].nunique()
+        print(f"câu trùng nhau trong train mà nhãn khác nhau: {(tdup > 1).sum()}")
+    if tr.any() and df.loc[tr, "label"].notna().any() and bai2.guess_task(df.loc[tr, "label"].dropna().to_numpy()) == "phanloai":
+        vc = df.loc[tr, "label"].value_counts()
+        print(f"{len(vc)} nhãn; lớp ít nhất {vc.min()} mẫu, nhiều nhất {vc.max()}" + ("   (MẤT CÂN BẰNG: đề chấm F1 thì đặt CHI_SO='f1_macro')" if vc.max() > 5 * vc.min() else ""))
+    if sua and bad.any():
+        print(f"=> bỏ {bad.sum()} dòng train lỗi")
+        df = df[~bad].reset_index(drop=True)
+    return df
+
+
+def lam_sach_tu_dong(X, y, ids=None, toi_da=0.1, seed=0):
+    """Tìm dòng train NGHI SAI NHÃN (ý tưởng của Cleanlab): chấm chéo 5 phần bằng hồi quy logistic trên vector; dòng nào mô hình
+    (chưa từng thấy dòng đó) rất chắc là nhãn khác thì nghi sai. Bỏ tối đa `toi_da` (10%) số dòng.
+    Trả về (mặt nạ giữ lại, bảng các dòng nghi sai)."""
+    from sklearn.decomposition import PCA
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold
+    from sklearn.pipeline import make_pipeline
+    from sklearn.preprocessing import StandardScaler
+    classes, yi = np.unique(np.asarray(y).astype(str), return_inverse=True)
+    if len(classes) < 2 or pd.Series(yi).value_counts().min() < 3:
+        print("ít dữ liệu mỗi lớp: bỏ qua làm sạch")
+        return np.ones(len(yi), bool), pd.DataFrame()
+    k = min(5, int(pd.Series(yi).value_counts().min()))
+    Z = PCA(n_components=min(256, X.shape[0] - 1), random_state=seed).fit_transform(X) if X.shape[1] > 256 else X
+    P = np.zeros((len(yi), len(classes)))
+    for a, b in StratifiedKFold(k, shuffle=True, random_state=seed).split(Z, yi):
+        m = make_pipeline(StandardScaler(), LogisticRegression(C=0.5, max_iter=2000)).fit(Z[a], yi[a])
+        P[np.ix_(b, m.classes_)] = m.predict_proba(Z[b])
+    p_nhan = P[np.arange(len(yi)), yi]
+    nguong = np.array([P[yi == j, j].mean() for j in range(len(classes))])        # độ tự tin trung bình của mỗi lớp
+    nghi = (P.argmax(1) != yi) & (p_nhan < 0.5 * nguong[yi])
+    order = np.argsort(p_nhan)
+    bo = np.zeros(len(yi), bool)
+    bo[[i for i in order if nghi[i]][: int(toi_da * len(yi))]] = True
+    rep = pd.DataFrame({"id": ids if ids is not None else np.arange(len(yi)), "nhan": classes[yi], "may_goi_y": classes[P.argmax(1)],
+                        "xac_suat_nhan_hien_tai": p_nhan.round(4)})[bo].sort_values("xac_suat_nhan_hien_tai")
+    rep.to_csv(WORK / "nghi_sai_nhan.csv", index=False, encoding="utf-8-sig")
+    print(f"LÀM SẠCH: nghi sai nhãn {nghi.sum()} dòng, bỏ {bo.sum()} / {len(yi)} (danh sách: work_b2/nghi_sai_nhan.csv)")
+    return ~bo, rep
+
+
+def tu_dong(train, test, mau="", thu_muc_anh="", cot=None, chi_so=None, anh=("clip", "dinov2"), chu=("e5", "bkai"),
+            lam_sach=True, tinh_chinh_cfg=(("clip", "e5"),), phut=40, epochs=5, batch=32):
+    """Chạy cả bài 2: đọc → đoán cột → bảng chuẩn → kiểm tra → vector → làm sạch → mô hình nhanh (NỘP 1) → tinh chỉnh (NỘP 2)
+    → trộn (NỘP 3) → tóm tắt. Bước nào lỗi thì bỏ qua bước đó, các file nộp đã có vẫn dùng được."""
+    t0 = time.time()
+    clock = lambda: f"[{(time.time() - t0) / 60:5.1f} phút]"
+    ket_qua = []           # (tên, điểm, file nộp, tên xác suất)
+    mau_df = doc_bang(mau) if mau else None
+    # ---- 1. đọc + bảng chuẩn ----
+    if bai2.clean_path(train).is_dir():
+        tr, te = tu_thu_muc(train, True), tu_thu_muc(test, False)
+        tr["id"] = tr["image"].map(lambda p: Path(p).stem)
+        te["id"] = te["image"].map(lambda p: Path(p).stem)
+        c = {"cot_id": "id", "cot_anh": "image", "cot_chu": [], "cot_nhan": "label"}
+    else:
+        tr, te = doc_bang(train), doc_bang(test)
+        print(f"train {tr.shape}, test {te.shape}. Cột train: {list(tr.columns)}")
+        c = doan_cot(tr, te, mau_df, thu_muc_anh)
+    c.update(cot or {})
+    print("DÙNG CÁC CỘT:", c, "  (sai thì sửa biến COT trong ô cấu hình rồi chạy lại)")
+    A = chuan_hoa(tr, "train", c["cot_id"], c["cot_anh"], c["cot_chu"], c["cot_nhan"], thu_muc_anh or None)
+    B = chuan_hoa(te, "test", c["cot_id"], c["cot_anh"], c["cot_chu"], None, thu_muc_anh or None)
+    df = pd.concat([A, B], ignore_index=True)
+    df = kiem_tra_du_lieu(df)
+    luu_bang(df)
+    itr, ite = (df.split == "train").to_numpy(), (df.split == "test").to_numpy()
+    y = df.loc[itr, "label"].to_numpy()
+    task = bai2.guess_task(y)
+    y = y.astype(str) if task == "phanloai" else y.astype(float)
+    ids_te = df.loc[ite, "id"].to_numpy()
+    cot_id_nop = c["cot_id"] or "id"
+    cot_nhan_nop = next((x for x in (mau_df.columns if mau_df is not None else []) if x != cot_id_nop), c["cot_nhan"])
+    print(f"{clock()} BÀI TOÁN: {'PHÂN LOẠI' if task == 'phanloai' else 'ĐOÁN SỐ'} | train {itr.sum()} | test {ite.sum()}")
+    # ---- 2. vector ----
+    F = dac_trung(df, anh=anh, chu=chu)
+    if not F:
+        raise RuntimeError("Không có cột ảnh hay cột chữ nào: sửa COT trong ô cấu hình (cot_anh, cot_chu) rồi chạy lại.")
+    np.savez(WORK / "dac_trung.npz", **F)
+    # ---- 3. làm sạch ----
+    giu = np.ones(itr.sum(), bool)
+    if lam_sach and task == "phanloai":
+        try:
+            giu, _ = lam_sach_tu_dong(np.hstack([F[k][itr] for k in F]), y, df.loc[itr, "id"].to_numpy())
+        except Exception as e:
+            print("bỏ qua làm sạch:", type(e).__name__, str(e)[:150])
+    np.save(WORK / "giu_lai.npy", giu)
+    # ---- 4. mô hình nhanh -> NỘP 1 ----
+    Ftr = {k: v[itr][giu] for k, v in F.items()}
+    Fte = {k: v[ite] for k, v in F.items()}
+    ka, kc = [k for k in F if k.startswith("anh_")], [k for k in F if k.startswith("chu_")]
+    if ka and kc:
+        Ftr["anh+chu"], Fte["anh+chu"] = np.hstack([Ftr[k] for k in ka + kc]), np.hstack([Fte[k] for k in ka + kc])
+    if "anh_clip" in F and task == "phanloai":
+        try:
+            Ftr["san_clip"], Fte["san_clip"] = clip_doan_theo_ten(Ftr["anh_clip"], Fte["anh_clip"], np.unique(y[giu]))
+        except Exception:
+            pass
+    print(f"\n{clock()} MÔ HÌNH NHANH")
+    pred, proba, board, best = mo_hinh_nhanh(Ftr, Fte, y[giu], task, chi_so)
+    met, diem1 = bai2.fit_predict.last[2], bai2.fit_predict.last[1]
+    lower = met in ("rmse", "mae")
+    if proba is not None:
+        luu_xac_suat("nhanh", ids_te, proba, proba.columns)
+    else:
+        luu_xac_suat("nhanh", ids_te, np.asarray(pred).reshape(-1, 1), ["pred"])
+    f1 = ghi_nop(ids_te, pred, proba, mau or None, cot_id_nop, cot_nhan_nop, ten="nop_1_nhanh")
+    ket_qua.append(("1 mô hình nhanh (chấm chéo 5 phần)", diem1, f1, "nhanh"))
+    print(f"\n{clock()} >>> NỘP NGAY FILE NÀY ĐỂ CÓ ĐIỂM: {f1}\n")
+    # ---- 5. tinh chỉnh -> NỘP 2 ----
+    trd = df[itr].reset_index(drop=True)[giu].reset_index(drop=True)
+    ted = df[ite].reset_index(drop=True)
+    for (a, ch) in tinh_chinh_cfg:
+        ten = f"tinh_chinh_{a}_{ch}"
+        print(f"{clock()} TINH CHỈNH ảnh={a} chữ={ch} (tối đa {phut} phút)")
+        try:
+            sc, tp, cl, _ = tinh_chinh(trd, ted, anh=a, chu=ch, epochs=epochs, batch=batch, phut=phut, task=task)
+            if task == "phanloai":
+                P = pd.DataFrame(tp, columns=[str(x) for x in cl])
+                luu_xac_suat(ten, ids_te, tp, cl)
+                f = ghi_nop(ids_te, cl[tp.argmax(1)], P, mau or None, cot_id_nop, cot_nhan_nop, ten="nop_2_" + ten)
+                nhan = "accuracy phần giữ lại"
+            else:
+                luu_xac_suat(ten, ids_te, tp.reshape(-1, 1), ["pred"])
+                f = ghi_nop(ids_te, tp, None, mau or None, cot_id_nop, cot_nhan_nop, ten="nop_2_" + ten)
+                sc, nhan = -sc, "RMSE phần giữ lại"
+            ket_qua.append((f"2 tinh chỉnh {a}+{ch} ({nhan})", sc, f, ten))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"!!! tinh chỉnh {a}+{ch} lỗi, bỏ qua ({type(e).__name__}). File nộp 1 vẫn dùng được. Lỗi 'CUDA out of memory': giảm BATCH.")
+    # ---- 6. trộn -> NỘP 3 ----
+    tc = [r for r in ket_qua if r[0].startswith("2")]
+    if tc:
+        best_tc = (min if lower else max)(tc, key=lambda r: r[1])
+        tot_hon = (best_tc[1] < diem1) if lower else (best_tc[1] > diem1)
+        w = {"nhanh": 1, best_tc[3]: 2} if tot_hon else {"nhanh": 2, best_tc[3]: 1}
+        ids, P = ghep_xac_suat(w)
+        if task == "phanloai":
+            f3 = ghi_nop(ids, P.columns[P.to_numpy().argmax(1)], P, mau or None, cot_id_nop, cot_nhan_nop, ten="nop_3_tron")
+        else:
+            f3 = ghi_nop(ids, P["pred"].to_numpy(), None, mau or None, cot_id_nop, cot_nhan_nop, ten="nop_3_tron")
+        ket_qua.append(("3 trộn nhanh + tinh chỉnh (không tự chấm được)", np.nan, f3, None))
+    # ---- 7. tóm tắt ----
+    print("\n" + "=" * 78 + f"\n{clock()} TÓM TẮT  (thước đo: {met}; {'càng THẤP càng tốt' if lower else 'càng CAO càng tốt'})")
+    for ten, d, f, _ in ket_qua:
+        print(f"  {ten:58s} {'' if d != d else f'{d:.4f}':>8}   {f}")
+    co_diem = [r for r in ket_qua if r[1] == r[1]]
+    tot = (min if lower else max)(co_diem, key=lambda r: r[1])
+    print(f"\n>>> NÊN NỘP: {tot[2]}")
+    if any(r[0].startswith("3") for r in ket_qua):
+        print(f">>> Còn lượt nộp thì nộp thêm bản trộn: {ket_qua[-1][2]}  (web lấy lần nộp cao nhất nên thử không mất gì)")
+    pd.DataFrame([r[:3] for r in ket_qua], columns=["cach", "diem_tu_cham", "file"]).to_csv(WORK / "tom_tat.csv", index=False, encoding="utf-8-sig")
+    return ket_qua

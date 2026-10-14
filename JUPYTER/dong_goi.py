@@ -1,5 +1,6 @@
 """ĐÓNG GÓI để mang lên JupyterHub (chạy trên MÁY NHÀ, máy Huệ):   python JUPYTER/dong_goi.py
 Tạo trong thư mục Desktop\\GOI_JUPYTER:
+  bai2.zip                (~30 MB)  chỉ KIT_BAI2 (bài 2), giải nén ra ~/B1/KIT_BAI2
   kit.zip                 (~550 MB) KIT_BAI1 + KIT_BAI2 + JUPYTER + du_lieu_tap_duot  -> giải nén thành ~/B1 trên máy chủ
   mo_hinh_bai2.zip        (~3,7 GB) mô hình bài 2: CLIP, DINOv2, ResNet/MobileNet, EasyOCR, e5, vietnamese-bi-encoder, MiniLM, opus-mt
   mo_hinh_nllb.zip        (~2,4 GB) mô hình dịch NLLB-200 (chỉ cần nếu đề là DỊCH và máy chủ không có mạng)
@@ -20,7 +21,7 @@ HOME = Path.home()
 OUT = HOME / "Desktop" / "GOI_JUPYTER"
 OUT.mkdir(parents=True, exist_ok=True)
 HF_SKIP_DIRS = {"onnx", "openvino"}      # bản xuất sang định dạng khác của mô hình, bài 2 không dùng
-SKIP_DIRS = {"runs", "ket_qua", "cache", "__pycache__", ".git"}
+SKIP_DIRS = {"runs", "ket_qua", "cache", "__pycache__", ".git", "work_b2"}
 HF = HOME / ".cache" / "huggingface" / "hub"
 BAI2_HF = ["openai--clip-vit-base-patch32", "facebook--dinov2-small", "intfloat--multilingual-e5-small",
            "bkai-foundation-models--vietnamese-bi-encoder", "sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2",
@@ -57,9 +58,11 @@ def make(name, items):
     print(f"[ok] {p}  ({p.stat().st_size / 1e9:.2f} GB)\n", flush=True)
 
 
-which = sys.argv[1:] or ["kit", "bai2"]
+which = sys.argv[1:] or ["kit", "goi_bai2", "bai2"]
 if "kit" in which:
     make("kit.zip", [(B1 / d, f"B1/{d}") for d in ("KIT_BAI1", "KIT_BAI2", "JUPYTER", "du_lieu_tap_duot")])
+if "goi_bai2" in which:      # gói nhỏ chỉ có bài 2 (giải nén ra cùng chỗ ~/B1/KIT_BAI2 như kit.zip)
+    make("bai2.zip", [(B1 / "KIT_BAI2", "B1/KIT_BAI2")])
 if "bai2" in which:
     make("mo_hinh_bai2.zip", [(HF / f"models--{m}", f".cache/huggingface/hub/models--{m}") for m in BAI2_HF]
          + [(HOME / ".cache" / "torch" / "hub" / "checkpoints", ".cache/torch/hub/checkpoints"), (HOME / ".EasyOCR" / "model", ".EasyOCR/model")])
